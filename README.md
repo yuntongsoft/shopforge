@@ -2,6 +2,8 @@
 
 **Production-ready Shopify App Starter Kit** — ship your app in days, not months.
 
+🌐 **Website:** [https://www.yuntongsoft.com](https://www.yuntongsoft.com) · 📖 **Docs:** [Documentation](https://www.yuntongsoft.com/docs)
+
 Battle-tested boilerplate with OAuth, Billing, Functions, GDPR compliance, and more. The core value: **developers never need to understand Shopify's underlying complexity** — Function, Webhook, GraphQL, metafield are all hidden behind clean abstractions.
 
 ---
@@ -454,6 +456,8 @@ MIT — use it however you want. Build apps, sell them, modify them. No attribut
 
 ## Documentation
 
+- 🌐 **Official Website:** [https://www.yuntongsoft.com](https://www.yuntongsoft.com)
+- 📖 **Documentation & Guides:** [https://www.yuntongsoft.com/docs](https://www.yuntongsoft.com/docs)
 - [CHANGELOG.md](CHANGELOG.md) — Release history and notable changes
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute, coding standards, PR process
 - [DEPLOYMENT.md](DEPLOYMENT.md) — Deployment guides for Vercel, Railway, Fly.io, Docker
