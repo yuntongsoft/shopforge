@@ -1,0 +1,12 @@
+name = "hello-function"
+type = "product_discounts"
+api_version = "2026-07"
+uid = "03896c22-033f-3156-bca2-03f3e296cd8277063c42"
+
+[build]
+command = "cargo wasi build --release"
+path = "target/wasm32-wasi/release/hello-function.wasm"
+
+[ui.paths]
+create = "/app/discounts/:functionId/new"
+details = "/app/discounts/:functionId/:id"

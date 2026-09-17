@@ -1,0 +1,136 @@
+# =============================================================================
+# ShopForge — GitHub Actions CI Pipeline
+# =============================================================================
+# Runs on every push and pull request to main/master branches.
+# Validates: type checking, linting, tests, and build.
+#
+# To customize:
+#   - Add deployment jobs for Vercel, Railway, or your own infrastructure
+#   - Add E2E tests with Playwright
+#   - Add security scanning with Snyk or Trivy
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+# Cancel in-progress runs for the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Quality Gates: typecheck, lint, test
+  # ─────────────────────────────────────────────────────────────────────────────
+  quality:
+    name: Quality Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true  # Non-blocking for now
+
+      - name: Run tests
+        run: npm test -- --run --coverage
+        env:
+          SHOPIFY_API_KEY: test-key
+          SHOPIFY_API_SECRET: test-secret-32-chars-minimum!!
+          ENCRYPTION_KEY: test-encryption-key-32-chars!!
+          CSRF_SECRET: test-csrf-secret
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Build: verify the app builds successfully
+  # ─────────────────────────────────────────────────────────────────────────────
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: quality
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        run: npm run build
+        env:
+          SHOPIFY_API_KEY: test-key
+          SHOPIFY_API_SECRET: test-secret-32-chars-minimum!!
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Docker: verify the Dockerfile builds (optional, runs in parallel with build)
+  # ─────────────────────────────────────────────────────────────────────────────
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: shopforge:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+        continue-on-error: true  # Non-blocking until Docker is required
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Summary: report status (useful for branch protection rules)
+  # ─────────────────────────────────────────────────────────────────────────────
+  summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    needs: [quality, build]
+    if: always()
+
+    steps:
+      - name: Check results
+        run: |
+          if [[ "${{ needs.quality.result }}" == "failure" || "${{ needs.build.result }}" == "failure" ]]; then
+            echo "❌ CI failed"
+            exit 1
+          fi
+          echo "✅ CI passed"

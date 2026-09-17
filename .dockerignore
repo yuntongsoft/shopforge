@@ -1,0 +1,39 @@
+# Dependencies
+node_modules
+landing/node_modules
+
+# Build artifacts
+build
+.cache
+
+# Development
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+*.log
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Testing
+coverage
+.nyc_output
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentation
+README.md
+LICENSE
+*.md
+
+# Misc
+.DS_Store
+Thumbs.db

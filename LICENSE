@@ -1,0 +1,133 @@
+ShopForge Commercial License
+
+Copyright (c) 2026 YuntongSoft. All rights reserved.
+
+===============================================================================
+                         SHOPFORGE COMMERCIAL LICENSE
+                              Version 1.0 — 2026
+===============================================================================
+
+This license governs the use of ShopForge ("the Software"), a Shopify app
+scaffold developed by YuntongSoft ("the Licensor").
+
+By purchasing, downloading, or using the Software, you ("the Licensee") agree
+to the terms below.
+
+───────────────────────────────────────────────────────────────────────────────
+1. GRANT OF LICENSE
+───────────────────────────────────────────────────────────────────────────────
+
+Subject to the terms of this license and payment of the applicable fee, the
+Licensor grants the Licensee a non-exclusive, non-transferable, perpetual
+license to:
+
+  (a) Use the Software to develop Shopify applications ("Derivative Works");
+  (b) Modify the source code for the purpose of building Derivative Works;
+  (c) Deploy and operate Derivative Works on the Shopify platform;
+  (d) Distribute and commercialize Derivative Works under the Licensee's own
+      terms and branding.
+
+───────────────────────────────────────────────────────────────────────────────
+2. OWNERSHIP
+───────────────────────────────────────────────────────────────────────────────
+
+  (a) The original source code of ShopForge remains the intellectual property
+      of the Licensor. This license does not transfer ownership.
+  (b) Derivative Works created by the Licensee — including all application
+      logic, business features, and custom code added on top of the scaffold
+      — are the sole property of the Licensee.
+  (c) The Licensee holds full rights to commercialize, sublicense, or
+      otherwise dispose of their Derivative Works.
+
+───────────────────────────────────────────────────────────────────────────────
+3. RESTRICTIONS
+───────────────────────────────────────────────────────────────────────────────
+
+The Licensee SHALL NOT:
+
+  (a) Redistribute, resell, sublicense, or make available the original
+      ShopForge source code (or substantially similar portions thereof) to
+      any third party, whether for free or for a fee;
+  (b) Publish the original ShopForge source code in a public repository
+      (e.g., GitHub, GitLab) or any open-source platform;
+  (c) Use the Software to create a competing scaffold, boilerplate, or
+      template product;
+  (d) Remove or alter copyright notices, license headers, or attribution
+      markers in the original source files.
+
+───────────────────────────────────────────────────────────────────────────────
+4. DERIVATIVE WORKS — CLARIFICATION
+───────────────────────────────────────────────────────────────────────────────
+
+  (a) A "Derivative Work" is defined as a Shopify application that:
+      - Incorporates the Software as a starting point; AND
+      - Adds substantial application-specific functionality, features, or
+        business logic beyond the scaffold's base capabilities.
+  (b) Derivative Works are NOT considered part of the Software. The Licensee
+      may distribute Derivative Works without restriction, including:
+      - Submitting to the Shopify App Store under the Licensee's own listing;
+      - Charging end users for access;
+      - Providing the Derivative Work as a SaaS service.
+  (c) If a Derivative Work retains more than 50% of the original scaffold
+      code without substantial modification, it may be considered a
+      redistribution of the Software and subject to the restrictions in
+      Section 3.
+
+───────────────────────────────────────────────────────────────────────────────
+5. NO WARRANTY
+───────────────────────────────────────────────────────────────────────────────
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING
+FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OF OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+───────────────────────────────────────────────────────────────────────────────
+6. TERMINATION
+───────────────────────────────────────────────────────────────────────────────
+
+  (a) This license is effective until terminated.
+  (b) The Licensor may terminate this license if the Licensee breaches any
+      term of this license, provided that:
+      - The Licensor gives written notice of the breach;
+      - The Licensee has 30 days to cure the breach;
+      - If the breach is not cured within 30 days, the license terminates.
+  (c) Upon termination, the Licensee must cease all use of the original
+      Software source code. Derivative Works created prior to termination
+      are not affected.
+  (d) Sections 2, 4, 5, 6, and 7 survive termination.
+
+───────────────────────────────────────────────────────────────────────────────
+7. LIMITATION OF LIABILITY
+───────────────────────────────────────────────────────────────────────────────
+
+IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING BUT NOT LIMITED TO
+PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES, LOSS OF USE, DATA, OR PROFITS;
+OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+───────────────────────────────────────────────────────────────────────────────
+8. GOVERNING LAW
+───────────────────────────────────────────────────────────────────────────────
+
+This license shall be governed by and construed in accordance with the laws
+of the jurisdiction in which the Licensor is established, without regard to
+its conflict of law provisions.
+
+───────────────────────────────────────────────────────────────────────────────
+9. CONTACT
+───────────────────────────────────────────────────────────────────────────────
+
+For licensing inquiries, enterprise agreements, or redistribution requests,
+contact:
+
+  YuntongSoft
+  Email: yuntongsoft@outlook.com
+
+===============================================================================

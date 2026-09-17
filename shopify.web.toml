@@ -1,0 +1,11 @@
+# Web component config — tells Shopify CLI how to start the Remix app.
+# Without this file, CLI won't start the web process and tunnel requests
+# will fail (500 / Example Domain).
+# Reference: https://github.com/Shopify/shopify-app-template-remix
+
+name = "remix"
+roles = ["frontend", "backend"]
+webhooks_path = "/webhooks"
+
+[commands]
+dev = "npm exec remix vite:dev"

@@ -1,0 +1,416 @@
+/**
+ * ShopForge — Global design enhancements
+ * Builds on Polaris design tokens, adds visual hierarchy without overriding defaults.
+ */
+
+/* ── Design Tokens ─────────────────────────────────────────────────────── */
+:root {
+  --sf-brand: #008060;
+  --sf-brand-light: #e3f1ed;
+  --sf-blue: #2c6ecb;
+  --sf-blue-light: #e8f0fe;
+  --sf-purple: #6d28d9;
+  --sf-purple-light: #f0ebfe;
+  --sf-orange: #d97706;
+  --sf-orange-light: #fef3e2;
+  --sf-radius-md: 12px;
+  --sf-radius-sm: 8px;
+  --sf-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --sf-shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --sf-transition: 0.2s ease;
+}
+
+/* ── Override Polaris Icon margin:auto centering ────────────────────────── */
+.sf-section-header .Polaris-Icon,
+.sf-settings-row-left .Polaris-Icon,
+.sf-stat-icon .Polaris-Icon,
+.sf-action-icon .Polaris-Icon,
+.sf-empty-state-icon .Polaris-Icon,
+.sf-plan-bar .Polaris-Icon,
+.sf-pricing-check .Polaris-Icon {
+  margin: 0;
+}
+
+/* ── Pricing Cards ────────────────────────────────────────────────────── */
+.sf-pricing-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  background: var(--p-color-bg-surface, #fff);
+  border-radius: var(--p-border-radius-300, 12px);
+  border: 1px solid var(--p-color-border-secondary, #e1e3e5);
+  transition: box-shadow 0.25s ease, transform 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+.sf-pricing-card:hover {
+  box-shadow: var(--p-shadow-300, 0 8px 16px rgba(0,0,0,.1));
+  transform: translateY(-2px);
+}
+.sf-pricing-card--featured {
+  background: var(--p-color-bg-surface-highlight, #f1f8ff);
+  border: 2px solid var(--p-color-border-highlight, #008060);
+  box-shadow: var(--p-shadow-200, 0 4px 8px rgba(0,0,0,.08));
+}
+.sf-pricing-card--featured:hover {
+  box-shadow: var(--p-shadow-400, 0 12px 24px rgba(0,0,0,.12));
+}
+.sf-pricing-ribbon {
+  position: absolute;
+  top: 12px; right: -32px;
+  background: var(--p-color-bg-fill-brand, #008060);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 40px;
+  transform: rotate(45deg);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  z-index: 1;
+}
+.sf-pricing-check {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--p-color-bg-fill-success, #008060);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  color: #fff;
+}
+.sf-pricing-check > span {
+  display: flex; align-items: center; justify-content: center;
+  width: 12px; height: 12px;
+}
+.sf-pricing-check svg { width: 12px; height: 12px; fill: currentColor; }
+.sf-pricing-price {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+/* ── Stat Card ─────────────────────────────────────────────────────────── */
+.sf-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.sf-stat-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px;
+  background: #fff;
+  border-radius: var(--sf-radius-md);
+  border: 1px solid #e1e3e5;
+  transition: box-shadow var(--sf-transition), border-color var(--sf-transition);
+}
+
+.sf-stat-card:hover {
+  box-shadow: var(--sf-shadow-card-hover);
+  border-color: #c9cccf;
+}
+
+.sf-stat-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  border-radius: 10px;
+}
+
+.sf-stat-icon--blue { background: var(--sf-blue-light); color: var(--sf-blue); }
+.sf-stat-icon--green { background: var(--sf-brand-light); color: var(--sf-brand); }
+.sf-stat-icon--purple { background: var(--sf-purple-light); color: var(--sf-purple); }
+.sf-stat-icon--orange { background: var(--sf-orange-light); color: var(--sf-orange); }
+
+.sf-stat-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sf-stat-label {
+  font-size: 13px;
+  color: #6d7175;
+  line-height: 1.3;
+}
+
+.sf-stat-value {
+  font-size: 28px;
+  font-weight: 600;
+  color: #202223;
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+}
+
+/* ── Quick Actions ─────────────────────────────────────────────────────── */
+.sf-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.sf-action-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 20px;
+  background: #fff;
+  border-radius: var(--sf-radius-md);
+  border: 1px solid #e1e3e5;
+  text-decoration: none;
+  color: inherit;
+  transition: box-shadow var(--sf-transition), border-color var(--sf-transition);
+  cursor: pointer;
+}
+
+.sf-action-card:hover {
+  box-shadow: var(--sf-shadow-card-hover);
+  border-color: var(--sf-brand);
+}
+
+.sf-action-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 8px;
+  background: var(--sf-brand-light);
+  color: var(--sf-brand);
+}
+
+.sf-action-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sf-action-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #202223;
+}
+
+.sf-action-desc {
+  font-size: 13px;
+  color: #6d7175;
+  line-height: 1.4;
+}
+
+
+/* ── Settings Rows ─────────────────────────────────────────────────────── */
+.sf-settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.sf-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f1f2f3;
+}
+
+.sf-settings-row:last-child {
+  border-bottom: none;
+}
+
+.sf-settings-row-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sf-settings-row-left svg {
+  flex-shrink: 0;
+  color: #6d7175;
+}
+
+.sf-settings-row-right {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.sf-settings-label {
+  font-size: 14px;
+  color: #6d7175;
+}
+
+.sf-settings-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: #202223;
+}
+
+/* ── Section Header ────────────────────────────────────────────────────── */
+.sf-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.sf-section-header svg {
+  color: #6d7175;
+}
+
+.sf-section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #202223;
+  margin: 0;
+}
+
+/* ── Table Enhancements ────────────────────────────────────────────────── */
+.sf-table-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── How-it-works Steps ────────────────────────────────────────────────── */
+.sf-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sf-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.sf-step-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 50%;
+  background: var(--sf-brand-light);
+  color: var(--sf-brand);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sf-step-text {
+  font-size: 14px;
+  color: #202223;
+  line-height: 1.5;
+  padding-top: 3px;
+}
+
+/* ── Page subtitle ─────────────────────────────────────────────────────── */
+.sf-page-subtitle {
+  font-size: 14px;
+  color: #6d7175;
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+
+/* ── Summary bar ───────────────────────────────────────────────────────── */
+.sf-summary-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  background: #f6f6f7;
+  border-radius: var(--sf-radius-sm);
+  margin-bottom: 4px;
+}
+
+.sf-summary-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #6d7175;
+}
+
+.sf-summary-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.sf-summary-dot--active { background: #008060; }
+.sf-summary-dot--inactive { background: #ffb800; }
+.sf-summary-dot--expired { background: #d72c0d; }
+
+/* ── Empty State Enhancement ────────────────────────────────────────────── */
+.sf-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.sf-empty-state-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: #f6f6f7;
+  color: #8c9196;
+  margin-bottom: 16px;
+}
+
+/* ── Steps card background ──────────────────────────────────────────────── */
+.sf-steps-card {
+  background: #fafbfb;
+  border-radius: var(--sf-radius-sm);
+  padding: 20px;
+}
+
+/* ── Plan bar enhancement ───────────────────────────────────────────────── */
+.sf-plan-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--sf-brand-light);
+  border-radius: var(--sf-radius-sm);
+  border: 1px solid rgba(0, 128, 96, 0.12);
+}
+
+.sf-plan-bar svg {
+  color: var(--sf-brand);
+}
+
+/* ── Action card arrow ──────────────────────────────────────────────────── */
+.sf-action-card {
+  position: relative;
+  padding-right: 36px;
+}
+
+.sf-action-card::after {
+  content: "\2192";
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #c9cccf;
+  font-size: 16px;
+  transition: color var(--sf-transition), transform var(--sf-transition);
+}
+
+.sf-action-card:hover::after {
+  color: var(--sf-brand);
+  transform: translateY(-50%) translateX(2px);
+}

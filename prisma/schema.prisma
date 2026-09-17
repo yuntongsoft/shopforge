@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Shop — stores OAuth tokens, plan status, and app state
+model Shop {
+  id            String    @id @default(uuid())
+  shopifyDomain String    @unique @map("shopify_domain")
+  shopifyToken  String    @map("shopify_token")
+  shopifyScope  String    @default("") @map("shopify_scope")
+  plan          String    @default("free")
+  merchantEmail String    @default("") @map("merchant_email")
+  locale        String    @default("en")
+  isDeleted     Boolean   @default(false) @map("is_deleted")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  orders        Order[]
+  shopFunctions ShopFunction[]
+
+  // NOTE: plan and isDeleted are low-cardinality — single-column indexes are wasteful.
+  // Composite indexes provide better selectivity for common query patterns.
+  @@index([plan, isDeleted])
+  @@index([isDeleted, updatedAt])
+  @@map("shops")
+}
+
+/// Session — OAuth session storage (managed by @shopify/shopify-app-session-storage-prisma)
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false) @map("is_online")
+  scope               String?
+  expires             DateTime?
+  accessToken         String    @map("access_token")
+  userId              BigInt?   @map("user_id")
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false) @map("account_owner")
+  locale              String?
+  collaborator        Boolean   @default(false)
+  emailVerified       Boolean   @default(false) @map("email_verified")
+  refreshToken        String?   @map("refresh_token")
+  refreshTokenExpires DateTime? @map("refresh_token_expires")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  // NOTE: No FK to Shop — the Shopify SDK stores sessions BEFORE the shop record
+  // exists (during OAuth). The afterAuth hook creates the Shop record afterward.
+  // Application-level cleanup handles orphaned sessions via shopify.server.ts hooks.
+
+  @@index([shop])
+  @@map("sessions")
+}
+
+/// Order — example business model (replace with your real feature via code generator)
+model Order {
+  id          String   @id @default(uuid())
+  shopId      String   @map("shop_id")
+  orderNumber String   @default("") @map("order_number")
+  customer    String   @default("")
+  // NOTE: Float used for cross-database compatibility (PostgreSQL/MySQL/SQLite).
+  // For production PostgreSQL/MySQL, prefer: Decimal @db.Decimal(18, 2)
+  amount      Float    @default(0)
+  status      String   @default("pending")
+  note        String   @default("")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  // shopId is already covered by the composite [shopId, createdAt] index below
+  @@index([shopId, createdAt])
+  @@map("orders")
+}
+
+/// ShopFunction — maps business rule types to deployed Shopify Function GIDs.
+/// Managed by function-registry.ts — developers never touch this directly.
+/// Scoped per-shop for multi-tenant isolation.
+model ShopFunction {
+  id         String   @id @default(uuid())
+  shopId     String   @map("shop_id")
+  ruleType   String   @map("rule_type")
+  functionId String   @map("function_id")
+  label      String   @default("")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, ruleType])
+  // shopId is already covered by the unique [shopId, ruleType] constraint
+  @@map("shop_functions")
+}

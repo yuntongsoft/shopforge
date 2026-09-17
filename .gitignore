@@ -1,0 +1,58 @@
+# =============================================================================
+# ShopForge .gitignore — Files NOT committed to the repository
+# =============================================================================
+
+# ── Dependencies ─────────────────────────────────────────────────────────────
+node_modules/
+
+# ── Build output ─────────────────────────────────────────────────────────────
+build/
+dist/
+*.log
+
+# ── Environment & Secrets ────────────────────────────────────────────────────
+# NEVER commit real credentials. Use .env.example as a template.
+.env
+.env.local
+.env.*.local
+
+# ── OS files ─────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE & Editor ─────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# ── Vercel ───────────────────────────────────────────────────────────────────
+.vercel
+
+# ── Shopify CLI ──────────────────────────────────────────────────────────────
+# CLI cache and local dev state — not needed in version control
+.shopify/
+
+# ── Prisma ───────────────────────────────────────────────────────────────────
+# SQLite dev database and auto-generated migrations
+prisma/*.db
+prisma/*.db-journal
+prisma/migrations/
+
+# ── Test coverage ────────────────────────────────────────────────────────────
+coverage/
+
+# ── Landing page (Next.js) ───────────────────────────────────────────────────
+landing/.next/
+landing/out/
+
+# ── Temporary files ──────────────────────────────────────────────────────────
+*.tmp
+*.temp
+.cache/
+
+# ── Docker volumes (if any) ──────────────────────────────────────────────────
+docker-data/

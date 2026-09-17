@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#16213e"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#008060"/>
+      <stop offset="100%" style="stop-color:#00b377"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect x="100" y="200" width="200" height="4" rx="2" fill="url(#accent)"/>
+  <text x="100" y="280" font-family="system-ui, -apple-system, sans-serif" font-size="72" font-weight="bold" fill="white">ShopForge</text>
+  <text x="100" y="340" font-family="system-ui, -apple-system, sans-serif" font-size="28" fill="#94a3b8">Ship Your Shopify App in Days, Not Months</text>
+  <text x="100" y="400" font-family="system-ui, -apple-system, sans-serif" font-size="20" fill="#64748b">OAuth • Billing • Functions • GDPR • i18n • Rate Limiting</text>
+  <rect x="100" y="460" width="160" height="40" rx="8" fill="url(#accent)"/>
+  <text x="130" y="486" font-family="system-ui, -apple-system, sans-serif" font-size="16" font-weight="600" fill="white">MIT Licensed</text>
+  <rect x="280" y="460" width="160" height="40" rx="8" fill="none" stroke="#334155" stroke-width="1"/>
+  <text x="310" y="486" font-family="system-ui, -apple-system, sans-serif" font-size="16" fill="#94a3b8">Open Source</text>
+  <text x="100" y="570" font-family="system-ui, -apple-system, sans-serif" font-size="16" fill="#475569">shopforge.dev</text>
+</svg>

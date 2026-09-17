@@ -1,0 +1,41 @@
+# Order Discount — Input Query
+#
+# This defines what data the Function receives from Shopify at checkout.
+# IMPORTANT: Total field complexity must stay under 30 (Shopify limit).
+# Each field/object adds 1 to complexity. Current: ~13 fields.
+#
+# To add product tag filtering, add:
+#   product { hasTags(tags: $ruleTags) { tag hasTag } }
+#   (requires $ruleTags variable in input.variables config)
+
+query Input {
+  cart {
+    lines {
+      quantity
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          id
+          product {
+            id
+            # Check if product has the "discount-eligible" tag
+            # Customize this tag name to match your use case
+            hasAnyTag(tags: ["discount-eligible"])
+          }
+        }
+      }
+    }
+    cost {
+      subtotalAmount {
+        amount
+      }
+    }
+  }
+  # Read discount config from the discount node's metafield
+  # Written by the Remix UI when merchant creates the discount
+  discount {
+    metafield(namespace: "custom", key: "discount_config") {
+      value
+    }
+  }
+}

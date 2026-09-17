@@ -1,0 +1,66 @@
+# Changelog
+
+All notable changes to ShopForge are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.0.0] — 2026-09-16
+
+### Added
+- **Auto Token Refresh**: `authenticatePage()` now automatically refreshes expiring offline tokens via Token Exchange (Shopify 2026-07+ requirement)
+- **CSRF Protection**: HMAC-SHA256 signed tokens for form submissions (`utils/csrf.ts`)
+- **XSS Sanitization**: HTML sanitization utility for email templates and user input (`utils/sanitize.ts`)
+- **Email i18n**: Welcome and billing emails support 4 languages (en/zh/ja/es) via `getTranslation()`
+- **Dual-Backend Rate Limiter**: Redis (production multi-process) + Memory Map (dev single process) with automatic fallback
+- **Comprehensive Test Suite**: 100+ test cases covering encryption, auth, rate-limiter, billing, webhook-registry, CSRF, sanitize, i18n, env-validator, shop-registration, rule-engine
+- **Code Generation Safety**: Generated CRUD routes now include `auth.ok` check to prevent unauthenticated access
+- **Health Endpoint Auth**: Detail mode requires `CRON_SECRET` to prevent information leakage
+
+### Changed
+- **Unified Auth**: All routes now use `authenticatePage()` instead of `authenticate.admin()` for consistent behavior
+- **Shared Registration**: `afterAuth` hook, `auth.$.tsx`, and `auth.callback.tsx` all use shared `registerShop()` — zero duplication
+- **Order Page**: Replaced placeholder "Option A/B/C" with real order statuses (Pending, Processing, Shipped, Delivered, Cancelled, Refunded)
+- **Landing Page**: Replaced fictional testimonials with clearly marked examples; fixed empty `href="#"` links
+- **Schema**: Added indexes on `shop.plan`, `shop.isDeleted`, `session.shop`, `order.shopId`; added `merchantEmail` field; added `updatedAt` to all models
+
+### Fixed
+- Privacy Policy and Terms pages: Removed duplicate `<html>` tags, replaced all `[Your App Name]` placeholders
+- `shopify.app.toml`: Updated `redirect_urls` and `application_url` to `shopforge.dev`
+- Locale files: Replaced "Your App Name" with "ShopForge" in all 4 languages
+- Code generator template: Now generates `auth.ok` check pattern
+
+### Security
+- Added CSRF token generation and validation (`utils/csrf.ts`)
+- Email templates now escape all user-provided data with `escapeHtml()`
+- Health endpoint detail mode requires `X-Cron-Secret` header or `secret` query param
+- Scopes in `shopify.app.toml` audited and aligned with actual API usage
+
+---
+
+## [0.9.0] — 2026-08-01
+
+### Added
+- Three-tier discount abstraction (Rule Engine → Discount API → Function)
+- Billing service with Shopify GraphQL Admin API
+- Webhook registry with auto-subscription from registered handlers
+- GDPR compliance webhooks (CUSTOMERS_DATA_REQUEST, CUSTOMERS_REDACT, SHOP_REDACT)
+- Landing page with Hero, Features, Pricing, Testimonials, FAQ, CTA sections
+- Blog system with Markdown content support
+- Code generator for CRUD routes from Prisma Schema
+
+### Changed
+- Migrated from `authenticate.admin()` to custom `authenticatePage()` for embedded app support
+- Rate limiter upgraded from memory-only to dual-backend (Redis + Memory)
+
+---
+
+## [0.1.0] — 2026-06-15
+
+### Added
+- Initial project scaffold with Remix 2.15 + Polaris 12 + Prisma 5
+- Shopify OAuth flow with AES-256-GCM token encryption
+- Basic CRUD example page (Order model)
+- i18n support with 4 languages
+- Environment variable validation at startup
+- Structured logging with `createLogger()`

@@ -1,0 +1,38 @@
+{
+  "cart": {
+    "lines": [
+      {
+        "quantity": 2,
+        "merchandise": {
+          "__typename": "ProductVariant",
+          "id": "gid://shopify/ProductVariant/12345",
+          "product": {
+            "id": "gid://shopify/Product/67890",
+            "hasAnyTag": true
+          }
+        }
+      },
+      {
+        "quantity": 1,
+        "merchandise": {
+          "__typename": "ProductVariant",
+          "id": "gid://shopify/ProductVariant/11111",
+          "product": {
+            "id": "gid://shopify/Product/22222",
+            "hasAnyTag": true
+          }
+        }
+      }
+    ],
+    "cost": {
+      "subtotalAmount": {
+        "amount": "75.00"
+      }
+    }
+  },
+  "discount": {
+    "metafield": {
+      "value": "{\"minSubtotal\":\"50.0\",\"discountPercent\":10.0}"
+    }
+  }
+}

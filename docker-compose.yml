@@ -1,0 +1,86 @@
+# =============================================================================
+# ShopForge — Docker Compose for local development / production
+# =============================================================================
+# Usage:
+#   docker compose up -d          # Start app + database
+#   docker compose logs -f app    # View logs
+#   docker compose down -v        # Stop and remove volumes
+# =============================================================================
+
+services:
+  # --- PostgreSQL Database ---
+  db:
+    image: postgres:16-alpine
+    container_name: shopforge-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shopforge
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-shopforge_dev}
+      POSTGRES_DB: shopforge
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shopforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- ShopForge App ---
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: shopforge-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Database
+      DATABASE_URL: postgresql://shopforge:${DB_PASSWORD:-shopforge_dev}@db:5432/shopforge?schema=public
+      
+      # Shopify (from .env file or environment)
+      SHOPIFY_API_KEY: ${SHOPIFY_API_KEY}
+      SHOPIFY_API_SECRET: ${SHOPIFY_API_SECRET}
+      SHOPIFY_APP_URL: ${SHOPIFY_APP_URL:-http://localhost:3000}
+      SCOPES: ${SCOPES:-read_products,write_products,read_orders,write_orders,read_customers,write_customers,read_discounts,write_discounts}
+      
+      # Security
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      CSRF_SECRET: ${CSRF_SECRET}
+      
+      # Optional: Redis for rate limiting (uncomment to enable)
+      # REDIS_URL: redis://redis:6379
+      
+      # Optional: Email service
+      # RESEND_API_KEY: ${RESEND_API_KEY}
+      # FROM_EMAIL: ${FROM_EMAIL:-noreply@example.com}
+      
+      # App config
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # --- Redis (optional, for production rate limiting) ---
+  # Uncomment to enable Redis-backed rate limiting
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: shopforge-redis
+  #   restart: unless-stopped
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis_data:/data
+
+volumes:
+  postgres_data:
+  # redis_data:

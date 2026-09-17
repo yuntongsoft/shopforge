@@ -1,0 +1,19 @@
+# Hello Function — Input Schema
+# This defines what data the Function receives from Shopify
+
+query Input {
+  cart {
+    lines {
+      quantity
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          id
+          product {
+            hasAnyTag(tags: ["discount-eligible"])
+          }
+        }
+      }
+    }
+  }
+}
