@@ -17,7 +17,7 @@ Battle-tested boilerplate with OAuth, Billing, Functions, GDPR compliance, and m
 - **Function Pipeline** — `npm run functions:setup` scaffolds from templates → `shopify app deploy` end-to-end
 - **Shopify Admin API** — High-level methods hiding all GraphQL complexity
 - **GDPR Compliance** — Customer data request, redact, and shop redact webhook handlers
-- **ErrorBoundary + 401 Recovery** — Auto-recovery from expired sessions with 15s timeout fallback
+- **Cold-Start Self-Healing** — Auto-reload when App Bridge isn't ready, ErrorBoundary with 401 recovery, and 15s timeout fallback
 - **i18n** — `useTranslation` hook with 4 languages (en/zh/ja/es), email templates included
 - **Rate Limiter** — Dual-backend: Redis (production multi-process) + Memory Map (dev single-process)
 - **CSRF Protection** — HMAC-SHA256 signed tokens for all form submissions
@@ -125,6 +125,7 @@ shopforge/
 │   │   ├── app.theme-widget.tsx# Thin wrapper → re-exports from demo
 │   │   ├── auth.$.tsx          # OAuth entry point
 │   │   ├── auth.callback.tsx   # OAuth callback
+│   │   ├── auth.login.tsx      # Bounce redirect for embedded app auth
 │   │   ├── health.tsx          # Health check endpoint
 │   │   ├── privacy-policy.tsx  # Public privacy policy
 │   │   ├── terms.tsx           # Public terms of service
@@ -135,6 +136,7 @@ shopforge/
 │   │   ├── shopify-admin.ts    # High-level API client (hides GraphQL)
 │   │   └── webhook-registry.ts # Webhook handler registry + built-in handlers
 │   ├── utils/              # Shared utilities
+│   │   ├── app-bridge.client.ts # SSR-safe access to window.shopify (App Bridge)
 │   │   ├── csrf.ts             # CSRF token generation + validation (HMAC-SHA256)
 │   │   ├── encryption.ts       # AES-256-GCM token encryption
 │   │   ├── env-validator.ts    # Startup env validation (fail fast)
@@ -143,7 +145,7 @@ shopforge/
 │   │   ├── rate-limiter.ts     # Dual-backend rate limiting (Redis + Memory)
 │   │   ├── retry.ts            # Exponential backoff wrapper
 │   │   ├── sanitize.ts         # HTML sanitization + XSS prevention
-│   │   ├── shopify-auth.ts     # Session token verification + auth + auto-refresh
+│   │   ├── shopify-auth.server.ts # Auth flow: token verify, exchange, bounceRedirect, needsRefresh
 │   │   ├── shopify-config.ts   # Shared API version constant
 │   │   └── shop-registration.ts# Shared OAuth shop registration logic
 │   ├── db.server.ts        # Prisma client singleton
@@ -197,10 +199,12 @@ shopforge/
 
 ## Module Guide
 
-### Authentication (`utils/shopify-auth.ts`)
+### Authentication (`utils/shopify-auth.server.ts`)
+- `authenticatePage(request)` — Full auth flow: extract id_token → verify → DB lookup → token exchange → register shop. Returns `AuthPageResult` (3-variant union: `ok` / `response` / `needsRefresh`)
+- `authResponse(auth)` — Type-safe helper to extract `Response` from `AuthPageResult` (handles `needsRefresh` variant via `bounceRedirect`)
 - `verifySessionToken(token)` — Verifies JWT from App Bridge
-- `authenticatePage(request)` — Full auth flow for loaders/actions, returns `{ shop, accessToken }`
 - `isValidShopDomain(shop)` — SSRF prevention for shop domains
+- **Cold-start handling**: When no `id_token` is available (App Bridge hasn't initialized), returns `needsRefresh` for graceful degradation. Homepage auto-reloads once App Bridge provides the token.
 
 ### Shopify Admin API (`services/shopify/`)
 

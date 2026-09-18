@@ -82,8 +82,8 @@ const features = [
     Icon: ShieldIcon,
   },
   {
-    title: "Review-Tested Loading Fix",
-    description: "Loading overlay race condition fix that passed Shopify App Store review. ErrorBoundary with 401 recovery.",
+    title: "Cold-Start Self-Healing",
+    description: "Auto-reload on cold start when App Bridge isn't ready. Loading overlay matches framework style. ErrorBoundary with 401 recovery.",
     Icon: CheckCircleIcon,
   },
   {
