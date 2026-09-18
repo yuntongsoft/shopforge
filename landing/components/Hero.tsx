@@ -14,7 +14,7 @@ export default function Hero() {
         </h1>
         <p className="mt-6 text-lg leading-8 text-gray-300">
           Production-ready boilerplate with OAuth, Billing, Functions, GDPR compliance,
-          i18n, and battle-tested loading fixes. Stop reinventing — start building.
+          i18n, and cold-start self-healing. Stop reinventing — start building.
         </p>
         <div className="mt-10 flex items-center justify-center gap-4">
           <a

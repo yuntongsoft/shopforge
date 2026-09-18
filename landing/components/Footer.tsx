@@ -18,6 +18,7 @@ export default function Footer() {
           <nav className="flex gap-6 text-sm text-gray-600">
             <a href="#features" className="hover:text-gray-900 transition">Features</a>
             <a href="#pricing" className="hover:text-gray-900 transition">Pricing</a>
+            <a href="https://github.com/your-org/shopforge/blob/main/GETTING-STARTED.md" target="_blank" rel="noopener noreferrer" className="hover:text-gray-900 transition">Docs</a>
             <a href={`mailto:${siteConfig.social.email}`} className="hover:text-gray-900 transition">Support</a>
           </nav>
         </div>

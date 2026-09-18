@@ -39,6 +39,8 @@ Battle-tested boilerplate with OAuth, Billing, Functions, GDPR compliance, and m
 
 ## Quick Start
 
+> **New to ShopForge?** Follow the step-by-step guide: [Getting Started](GETTING-STARTED.md) — covers Shopify Partner setup, API credentials, environment config, and first launch.
+
 ### Option A: Local Development (recommended)
 
 ```bash
@@ -46,16 +48,24 @@ Battle-tested boilerplate with OAuth, Billing, Functions, GDPR compliance, and m
 git clone https://github.com/your-org/shopforge.git my-shopify-app
 cd my-shopify-app
 
-# 2. Install dependencies (app + landing page in one go)
+# 2. Install dependencies
 npm install
-#    → First install prompts database selection (PostgreSQL / MySQL / SQLite)
-#    → Auto-generates .env and prisma/schema.prisma
 
-# 3. Fill in Shopify credentials in .env
-#    SHOPIFY_API_KEY, SHOPIFY_API_SECRET
+# 3. Create Shopify App in Partner Dashboard
+#    → Create version with App URL: https://example.com
+#    → Add scopes: read_discounts,write_discounts,read_orders,read_products,write_products
+#    → Add redirect URL: https://example.com/auth/callback
+#    → Release the version
+#    → Copy API Key + Secret from App settings
 
-# 4. Start dev server
+# 4. Configure environment
+cp .env.example .env
+#    Edit .env: SHOPIFY_API_KEY, SHOPIFY_API_SECRET, DATABASE_URL, ENCRYPTION_KEY
+#    Edit shopify.app.toml: client_id = "your_api_key"
+
+# 5. Start
 npm run dev
+#    Press P to open in browser
 ```
 
 ### Option B: Docker
@@ -65,8 +75,6 @@ npm run dev
 # 2. Start everything
 docker compose up -d
 ```
-
-That's it. Access your app from the Shopify Admin → Apps menu.
 
 ### Database Configuration
 
@@ -460,6 +468,7 @@ MIT — use it however you want. Build apps, sell them, modify them. No attribut
 
 ## Documentation
 
+- 🚀 **[Getting Started](GETTING-STARTED.md)** — Step-by-step guide from clone to running app
 - 🌐 **Official Website:** [https://www.yuntongsoft.com](https://www.yuntongsoft.com)
 - 📖 **Documentation & Guides:** [https://www.yuntongsoft.com/docs](https://www.yuntongsoft.com/docs)
 - [CHANGELOG.md](CHANGELOG.md) — Release history and notable changes

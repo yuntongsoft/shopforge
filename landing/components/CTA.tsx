@@ -14,8 +14,8 @@ export default function CTA() {
           Start building your Shopify app today
         </h2>
         <p className="text-emerald-100 text-lg mb-8 max-w-2xl mx-auto">
-          Clone the repo, run <code className="bg-emerald-800 px-2 py-1 rounded text-emerald-100 text-sm">npm install</code>, and have your app running in 10 minutes.
-          No signup, no paywall — just code.
+          Clone the repo, create a Shopify app, configure your credentials, and have your app running in 15 minutes.
+          Step-by-step guide included. No signup, no paywall — just code.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -34,7 +34,7 @@ export default function CTA() {
 
           {/* Secondary CTA — Documentation */}
           <a
-            href="https://github.com/your-org/shopforge#quick-start"
+            href="https://github.com/your-org/shopforge/blob/main/GETTING-STARTED.md"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 border-2 border-white/40 text-white font-semibold px-8 py-3.5 rounded-xl hover:bg-white/10 transition-colors"
