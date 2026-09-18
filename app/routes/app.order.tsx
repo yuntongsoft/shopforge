@@ -14,7 +14,7 @@
  */
 import { json } from "@remix-run/node";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { authenticatePage } from "~/utils/shopify-auth.server";
+import { authenticatePage, authResponse } from "~/utils/shopify-auth.server";
 import prisma from "~/db.server";
 import { rateLimit, RATE_LIMIT_PRESETS } from "~/utils/rate-limiter";
 import { generateCsrfToken, validateCsrfRequest } from "~/utils/csrf";
@@ -31,7 +31,7 @@ const logger = createLogger({ module: "order" });
 // ─────────────────────────────────────────────────────────────────────────────
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const auth = await authenticatePage(request);
-  if (!auth.ok) return auth.response;
+  if (!auth.ok) return authResponse(auth);
   const shop = auth.shop;
   const accessToken = auth.accessToken;
 
@@ -146,7 +146,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const action = async ({ request }: ActionFunctionArgs) => {
   const auth = await authenticatePage(request);
-  if (!auth.ok) return auth.response;
+  if (!auth.ok) return authResponse(auth);
   const shop = auth.shop;
 
   const ip = request.headers.get("x-forwarded-for") || "unknown";

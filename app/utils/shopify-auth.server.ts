@@ -45,6 +45,7 @@ import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import prisma from "~/db.server";
 import { decrypt, encrypt } from "~/utils/encryption";
+import { registerShop } from "~/utils/shop-registration";
 import { createLogger } from "~/utils/logger";
 
 const logger = createLogger({ module: "shopify-auth" });
@@ -214,8 +215,11 @@ function buildBouncePage(url: string): Response {
     status: 200,
     headers: {
       "Content-Type": "text/html; charset=utf-8",
-      "X-Frame-Options": "DENY",
-      "Content-Security-Policy": "frame-ancestors 'none'",
+      // NOTE: Do NOT set X-Frame-Options or frame-ancestors here.
+      // The bounce page MUST render inside the Shopify Admin iframe
+      // so its JS can execute window.top.location.replace() to break
+      // out and redirect the top window to the OAuth flow.
+      "Cache-Control": "no-store",
     },
   });
 }
@@ -238,87 +242,205 @@ function sanitizeRedirectUrl(url: string): string {
 }
 
 /**
- * Result of authenticatePage() — either authenticated or needs redirect.
- * Callers must `return auth.response` when `ok === false`.
+ * Result of authenticatePage() — authenticated, needs redirect, or needs refresh.
+ *
+ * ok === true  → shop + accessToken ready for use
+ * ok === false, response → bounce HTML (Remix renders React tree anyway, so this
+ *                          only works for HTTP redirects; component sees undefined data)
+ * ok === false, needsRefresh → token exchange failed but shop domain is known;
+ *                              loader should return safe default JSON so the page
+ *                              renders with empty data; user refreshes to get real data
  */
 export type AuthPageResult =
   | { ok: true; shop: { id: string; shopifyDomain: string; plan: string; shopifyScope: string; locale: string; createdAt: Date | null }; accessToken: string }
-  | { ok: false; response: Response };
+  | { ok: false; response: Response }
+  | { ok: false; needsRefresh: true; shopDomain: string };
+
+/**
+ * Convert a failed AuthPageResult to a Response.
+ * For non-homepage loaders that don't handle needsRefresh specially.
+ */
+export function authResponse(auth: Extract<AuthPageResult, { ok: false }>): Response {
+  if ("response" in auth) return auth.response;
+  return bounceRedirect(`/auth/login?shop=${auth.shopDomain}`);
+}
 
 /**
  * Authenticate a page request (loader or action)
  *
- * Extracts the session token from the Authorization header or URL params,
- * verifies it, and returns the shop record.
- * Returns a bounce-page Response when OAuth is needed (top-level redirect for embedded apps).
+ * Authentication flow (compatible with unstable_newEmbeddedAuthStrategy):
+ *
+ * Fast path (existing shop):
+ *   1. Extract shop from id_token (JWT) or URL param
+ *   2. Look up shop in DB → if found with valid token, return immediately
+ *
+ * Token exchange path (new install / first visit):
+ *   1. Verify id_token → extract shop domain
+ *   2. Exchange id_token for offline access token via Shopify's token exchange API
+ *   3. Register shop in DB (upsert)
+ *   4. Return shop data + access token
+ *
+ * Fallback (no valid id_token, shop not in DB):
+ *   1. Bounce to /auth/login?shop=xxx for traditional OAuth
+ *
+ * NOTE: We do NOT use SDK's authenticate.admin() here because it requires
+ * both `shop` and `host` URL params. When the app is first loaded from
+ * Shopify Admin, `host` may be missing, causing the SDK to redirect to
+ * /auth/login without shop param → broken redirect loop.
  *
  * Usage:
  *   const auth = await authenticatePage(request);
- *   if (!auth.ok) return auth.response;  // loader returns bounce page
+ *   if (!auth.ok) return auth.response;
  *   const { shop, accessToken } = auth;
  */
 export async function authenticatePage(request: Request): Promise<AuthPageResult> {
   const url = new URL(request.url);
 
-  // 1. Try Authorization header (App Bridge sends this)
+  // 1. Extract session token from Authorization header or id_token URL param
   const authHeader = request.headers.get("Authorization");
-  let token: string | null = null;
+  let token: string | null = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!token) token = url.searchParams.get("id_token");
 
-  if (authHeader?.startsWith("Bearer ")) {
-    token = authHeader.slice(7);
+  // 2. Try to extract shop domain from session token
+  let shopDomain: string | null = null;
+  if (token) {
+    try {
+      const payload = verifySessionToken(token) as { dest: string };
+      shopDomain = payload.dest.replace(/^https?:\/\//, "");
+    } catch (err) {
+      logger.debug({ error: (err as Error)?.message }, "Session token verification failed, falling back to shop param");
+    }
   }
 
-  // 2. Fallback to id_token URL param
-  if (!token) {
-    token = url.searchParams.get("id_token");
+  // 3. Fallback: extract shop from URL param
+  if (!shopDomain) shopDomain = url.searchParams.get("shop");
+
+  // 4. DB fallback — most recently installed shop (single-shop dev environments)
+  if (!shopDomain) {
+    try {
+      const lastShop = await prisma.shop.findFirst({
+        where: { isDeleted: false },
+        orderBy: { createdAt: "desc" },
+        select: { shopifyDomain: true },
+      });
+      if (lastShop) shopDomain = lastShop.shopifyDomain;
+    } catch { /* DB unavailable */ }
   }
 
-  // 3. No token → bounce to OAuth (top-level redirect for embedded apps)
-  if (!token) {
-    const shop = url.searchParams.get("shop");
-    const loginUrl = shop ? `/auth/login?shop=${shop}` : "/auth/login";
-    return { ok: false, response: bounceRedirect(loginUrl) };
+  // 5. No shop at all → need OAuth
+  if (!shopDomain) {
+    logger.warn({}, "No shop domain available in authenticatePage");
+    return { ok: false, response: bounceRedirect("/auth/login") };
   }
 
-  // 4. Verify token
-  let payload: { dest: string };
-  try {
-    payload = verifySessionToken(token) as { dest: string };
-  } catch (err) {
-    logger.warn({ error: (err as Error)?.message }, "Token verification failed in authenticatePage");
-    const shop = url.searchParams.get("shop");
-    const loginUrl = shop ? `/auth/login?shop=${shop}` : "/auth/login";
-    return { ok: false, response: bounceRedirect(loginUrl) };
-  }
-  const shopDomain = payload.dest.replace(/^https?:\/\//, "");
-
-  // 5. Look up shop + token in a single query (avoids redundant DB round-trip)
-  const shopRecord = await prisma.shop.findUnique({
-    where: { shopifyDomain: shopDomain },
+  // 6. Look up shop in DB
+  const shopRecord = await prisma.shop.findFirst({
+    where: { shopifyDomain: shopDomain, isDeleted: false },
     select: { id: true, shopifyDomain: true, plan: true, shopifyScope: true, locale: true, createdAt: true, shopifyToken: true },
   });
 
-  if (!shopRecord) {
-    logger.warn({ shopDomain }, "Shop not found in DB during authenticatePage");
-    return { ok: false, response: bounceRedirect(`/auth/login?shop=${shopDomain}`) };
+  // 7. Shop found with valid token → fast path
+  if (shopRecord?.shopifyToken) {
+    const { shopifyToken: _token, ...shopInfo } = shopRecord;
+    let accessToken: string;
+    try {
+      accessToken = decrypt(shopRecord.shopifyToken);
+    } catch (err) {
+      logger.error({ shop: shopDomain, error: (err as Error)?.message }, "Failed to decrypt stored access token");
+      // Token corrupted — fall through to token exchange to get a fresh one
+      if (token) {
+        try {
+          accessToken = await exchangeTokenForOfflineAccess(shopDomain, token);
+          await registerShop(shopDomain, accessToken, process.env.SHOPIFY_SCOPES || "");
+          logger.info({ shop: shopDomain }, "Shop re-registered after token decryption failure");
+          const reRegistered = await prisma.shop.findFirst({
+            where: { shopifyDomain: shopDomain, isDeleted: false },
+            select: { id: true, shopifyDomain: true, plan: true, shopifyScope: true, locale: true, createdAt: true },
+          });
+          if (reRegistered) return { ok: true, shop: reRegistered, accessToken };
+        } catch (exchangeErr) {
+          logger.error({ shop: shopDomain, error: (exchangeErr as Error)?.message }, "Token exchange after decryption failure also failed");
+        }
+      }
+      logger.warn({ shopDomain }, "Token decryption failed and recovery failed, bouncing to OAuth");
+      return { ok: false, response: bounceRedirect(`/auth/login?shop=${shopDomain}`) };
+    }
+    logger.debug({ shop: shopDomain }, "authenticatePage fast path: shop found in DB with valid token");
+    return { ok: true, shop: shopInfo, accessToken };
   }
 
-  // 6. Check access token (redirect to OAuth if missing/empty)
-  if (!shopRecord.shopifyToken) {
-    logger.warn({ shopDomain }, "Shop found but no access token stored");
-    return { ok: false, response: bounceRedirect(`/auth/login?shop=${shopDomain}`) };
+  // 8. Shop not in DB or no access token → try token exchange
+  logger.info({ shop: shopDomain, hasToken: !!token, shopInDb: !!shopRecord }, "Shop needs token exchange or OAuth");
+  if (token) {
+    try {
+      logger.info({ shop: shopDomain }, "Shop not in DB or missing token, attempting token exchange");
+      const accessToken = await exchangeTokenForOfflineAccess(shopDomain, token);
+
+      // Register shop in DB (upsert — creates or updates existing record)
+      await registerShop(shopDomain, accessToken, process.env.SHOPIFY_SCOPES || "");
+      logger.info({ shop: shopDomain }, "Shop registered via token exchange");
+
+      // Re-query to get the full shop record with all fields
+      const registered = await prisma.shop.findFirst({
+        where: { shopifyDomain: shopDomain, isDeleted: false },
+        select: { id: true, shopifyDomain: true, plan: true, shopifyScope: true, locale: true, createdAt: true },
+      });
+
+      if (registered) {
+        return { ok: true, shop: registered, accessToken };
+      }
+    } catch (err) {
+      logger.error({ shop: shopDomain, error: (err as Error)?.message }, "Token exchange failed");
+      // Fall through to bounce redirect
+    }
   }
 
-  const accessToken = decrypt(shopRecord.shopifyToken);
+  // 9. Token exchange failed or no valid token
+  //    Return needsRefresh so the loader returns safe defaults — page renders
+  //    with empty data, user refreshes to get real data.
+  logger.warn({ shopDomain }, "Token exchange failed, returning needsRefresh for graceful degradation");
+  return { ok: false, needsRefresh: true, shopDomain };
+}
 
-  // Build shop object without token for return
-  const { shopifyToken: _token, ...shopInfo } = shopRecord;
+/**
+ * Exchange an id_token (session token) for an offline access token.
+ * Uses Shopify's token exchange endpoint — no redirect needed.
+ */
+async function exchangeTokenForOfflineAccess(shopDomain: string, idToken: string): Promise<string> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-  // NOTE: Token refresh is handled by the Shopify SDK (unstable_newEmbeddedAuthStrategy)
-  // when using authenticate.admin(). For authenticatePage(), we use the offline token
-  // stored in the DB which doesn't expire (or is refreshed during OAuth re-install).
+  let response: Response;
+  try {
+    response = await fetch(`https://${shopDomain}/admin/oauth/access_token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_id: process.env.SHOPIFY_API_KEY,
+        client_secret: process.env.SHOPIFY_API_SECRET,
+        grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+        subject_token: idToken,
+        subject_token_type: "urn:ietf:params:oauth:token-type:id_token",
+        requested_token_type: "urn:shopify:params:oauth:token-type:offline-access-token",
+      }),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
-  return { ok: true, shop: shopInfo, accessToken };
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Token exchange failed: ${error}`);
+  }
+
+  const data = await response.json();
+  const accessToken = data.access_token as string;
+  if (!accessToken) throw new Error("Token exchange returned no access_token");
+
+  const fingerprint = crypto.createHash("sha256").update(accessToken).digest("hex").substring(0, 12);
+  logger.info({ shop: shopDomain, tokenFingerprint: fingerprint }, "Token exchange successful");
+  return accessToken;
 }
 
 /**

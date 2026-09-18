@@ -14,7 +14,7 @@
  */
 import { json } from "@remix-run/node";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { authenticatePage } from "~/utils/shopify-auth.server";
+import { authenticatePage, authResponse } from "~/utils/shopify-auth.server";
 import { shopifyAdmin } from "~/services/shopify-admin";
 import { rateLimit, RATE_LIMIT_PRESETS } from "~/utils/rate-limiter";
 import { generateCsrfToken, validateCsrfRequest } from "~/utils/csrf";
@@ -34,7 +34,7 @@ const METAFIELD_KEY = "shopforge_widget";
 // ─────────────────────────────────────────────────────────────────────────────
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const auth = await authenticatePage(request);
-  if (!auth.ok) return auth.response;
+  if (!auth.ok) return authResponse(auth);
   const shop = auth.shop;
   const api = shopifyAdmin(shop.shopifyDomain);
 
@@ -57,7 +57,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const action = async ({ request }: ActionFunctionArgs) => {
   const auth = await authenticatePage(request);
-  if (!auth.ok) return auth.response;
+  if (!auth.ok) return authResponse(auth);
   const shop = auth.shop;
 
   const limited = await rateLimit(`theme-widget:${shop.id}`, RATE_LIMIT_PRESETS.write);

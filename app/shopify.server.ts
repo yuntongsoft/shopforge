@@ -19,6 +19,10 @@
  *   - API routes calling Shopify → authenticate.admin() from THIS FILE
  *   - Page loaders/actions with custom DB queries → authenticatePage() from shopify-auth.ts
  *
+ * IMPORTANT: app.tsx layout loader MUST NOT call authenticate.admin() when
+ * unstable_newEmbeddedAuthStrategy is enabled (see app.tsx for the correct pattern).
+ * It causes an infinite bounce → /auth/login → OAuth → /app → bounce loop.
+ *
  * Webhook subscriptions are auto-generated from webhook-registry.
  * Developers register handlers via webhookRegistry.on() — no need to touch this file.
  *
@@ -95,7 +99,12 @@ const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY!,
   apiSecretKey: process.env.SHOPIFY_API_SECRET!,
   apiVersion: SHOPIFY_API_VERSION_ENUM,
-  scopes: process.env.SHOPIFY_SCOPES?.split(",") ?? APP_SCOPES,
+  // NOTE: Empty string "".split(",") returns [""] (not null), so ?? won't trigger fallback.
+  // Trim + truthy check prevents requesting empty scopes from breaking OAuth.
+  scopes: (() => {
+    const raw = process.env.SHOPIFY_SCOPES?.trim();
+    return raw ? raw.split(",") : APP_SCOPES;
+  })(),
   appUrl: process.env.APP_URL || "http://localhost:3000",
   isEmbeddedApp: true,
   isOnline: false, // Force offline tokens — match traffic-guard pattern

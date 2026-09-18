@@ -16,6 +16,8 @@
 import { json } from "@remix-run/node";
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { useLoaderData, useRouteLoaderData } from "@remix-run/react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Page, Text, BlockStack, Icon } from "@shopify/polaris";
 import {
   OrderIcon,
@@ -28,6 +30,7 @@ import {
   ArrowRightIcon,
 } from "@shopify/polaris-icons";
 import { authenticatePage } from "~/utils/shopify-auth.server";
+import { getAppBridge } from "~/utils/app-bridge.client";
 import { shopifyAdmin } from "~/services/shopify-admin";
 import { createLogger } from "~/utils/logger";
 import { useTranslation } from "~/utils/i18n";
@@ -39,7 +42,12 @@ const logger = createLogger({ module: "dashboard" });
 // ─────────────────────────────────────────────────────────────────────────────
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const auth = await authenticatePage(request);
-  if (!auth.ok) return auth.response;
+  if (!auth.ok) {
+    if ("needsRefresh" in auth) {
+      return json({ needsRefresh: true, shopName: "", plan: "", currency: "USD", totalOrders: 0, totalRevenue: 0, activeDiscounts: 0, functionCount: 0 });
+    }
+    return auth.response;
+  }
   const shop = auth.shop;
 
   try {
@@ -73,13 +81,18 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       orderStatsOk: orderStats.status === "fulfilled",
     }, "Dashboard loaded");
 
+    const rawName = (shopInfoValue as Record<string, unknown>)?.name as string;
+    const shopName = (rawName && rawName !== "undefined") ? rawName : shop.shopifyDomain;
+
     return json({
-      shopName: (shopInfoValue as Record<string, unknown>)?.name as string || shop.shopifyDomain,
+      shopName,
       plan: shop.plan || "\u2014",
-      currency: (shopInfoValue as Record<string, unknown>)?.currency as string || "USD",
-      totalOrders: orderStatsValue.totalOrders,
-      totalRevenue: orderStatsValue.totalRevenue,
-      activeDiscounts: discounts,
+      currency: ((shopInfoValue as Record<string, unknown>)?.currency as string) && (shopInfoValue as Record<string, unknown>)?.currency !== "undefined"
+        ? (shopInfoValue as Record<string, unknown>)?.currency as string
+        : "USD",
+      totalOrders: Number(orderStatsValue.totalOrders) || 0,
+      totalRevenue: Number(orderStatsValue.totalRevenue) || 0,
+      activeDiscounts: Number(discounts) || 0,
       functionCount: 0, // TODO: implement function count query
     });
   } catch (err) {
@@ -101,11 +114,73 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 // UI
 // ─────────────────────────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const { shopName, plan, currency, totalOrders, totalRevenue, activeDiscounts, functionCount } =
-    useLoaderData<typeof loader>();
+  const loaderData = useLoaderData<typeof loader>() ?? { shopName: "", plan: "", currency: "USD", totalOrders: 0, totalRevenue: 0, activeDiscounts: 0, functionCount: 0 };
   const { t } = useTranslation(useRouteLoaderData<typeof import("./app").loader>("routes/app")?.locale);
 
-  const currencySymbol = currency === "USD" ? "$" : currency;
+  // SSR guard — createPortal requires document.body which only exists client-side
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // Auth not yet complete — wait for App Bridge to provide id_token, then auto-reload
+  const reloadAttempted = useRef(false);
+  useEffect(() => {
+    if (!loaderData.needsRefresh || reloadAttempted.current) return;
+    let attempts = 0;
+    const timer = setInterval(async () => {
+      attempts++;
+      const shopify = getAppBridge();
+      if (shopify?.idToken) {
+        clearInterval(timer);
+        reloadAttempted.current = true;
+        try {
+          const idToken = await shopify.idToken();
+          if (idToken) {
+            const params = new URLSearchParams(window.location.search);
+            params.set("id_token", idToken);
+            window.location.replace(`${window.location.pathname}?${params.toString()}`);
+            return;
+          }
+        } catch { /* fall through */ }
+      }
+      if (attempts > 25) clearInterval(timer);
+    }, 200);
+    return () => clearInterval(timer);
+  }, [loaderData.needsRefresh]);
+
+  if (loaderData.needsRefresh) {
+    if (!mounted) return null;
+    return createPortal(
+      <div style={{
+        position: "fixed", inset: 0, zIndex: 9999,
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        background: "#f6f6f7",
+      }}>
+        <style>{`
+          @keyframes auth-spin { to { transform: rotate(360deg); } }
+        `}</style>
+        <div style={{
+          width: 40, height: 40,
+          border: "3px solid #e1e3e5", borderTopColor: "#008060",
+          borderRadius: "50%", animation: "auth-spin 0.8s linear infinite",
+        }} />
+        <div style={{
+          marginTop: 16,
+          fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+          fontSize: 14, color: "#6d7175",
+        }}>
+          {t("common.loading")}
+        </div>
+      </div>,
+      document.body,
+    );
+  }
+
+  const { shopName, plan, currency, totalOrders, totalRevenue, activeDiscounts, functionCount } = loaderData;
+
+  // Map common currency codes to symbols — fallback to "$" for unknown/invalid values
+  const CURRENCY_SYMBOLS: Record<string, string> = { USD: "$", EUR: "€", GBP: "£", JPY: "¥", CAD: "CA$", AUD: "A$" };
+  const currencySymbol = CURRENCY_SYMBOLS[currency] ?? "$";
 
   return (
     <Page title={`${t("dashboard.welcomeTo")} ${shopName}`}>
@@ -116,25 +191,25 @@ export default function Dashboard() {
             icon={OrderIcon}
             color="blue"
             label={t("dashboard.orders30d")}
-            value={String(totalOrders)}
+            value={String(totalOrders ?? 0)}
           />
           <StatCard
             icon={MoneyNoneIcon}
             color="green"
             label={t("dashboard.revenue30d")}
-            value={`${currencySymbol}${totalRevenue.toLocaleString()}`}
+            value={`${currencySymbol}${(totalRevenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           />
           <StatCard
             icon={DiscountIcon}
             color="purple"
             label={t("dashboard.activeDiscounts")}
-            value={String(activeDiscounts)}
+            value={String(activeDiscounts ?? 0)}
           />
           <StatCard
             icon={CodeIcon}
             color="orange"
             label={t("dashboard.functions")}
-            value={String(functionCount)}
+            value={String(functionCount ?? 0)}
           />
         </div>
 

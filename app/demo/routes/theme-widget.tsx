@@ -50,7 +50,7 @@ interface ThemeWidgetActionData {
 // UI
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ThemeWidgetPage() {
-  const { config, csrfToken } = useLoaderData<ThemeWidgetLoaderData>();
+  const { config = { heading: "", productCount: "4" }, csrfToken = "" } = useLoaderData<ThemeWidgetLoaderData>();
   const actionData = useActionData<ThemeWidgetActionData>();
   const { t } = useTranslation(useRouteLoaderData<typeof import("~/routes/app").loader>("routes/app")?.locale);
   const [heading, setHeading] = useState(config.heading);

@@ -20,10 +20,10 @@ import {
   Frame,
 } from "@shopify/polaris";
 import { useLoaderData } from "@remix-run/react";
-import { useAppBridge } from "@shopify/app-bridge-react";
+import { getAppBridge } from "~/utils/app-bridge.client";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { authenticatePage } from "~/utils/shopify-auth.server";
+import { authenticatePage, authResponse } from "~/utils/shopify-auth.server";
 import { APP_SCOPES } from "~/shopify.server";
 import { SHOPIFY_API_VERSION } from "~/utils/shopify-config";
 import prisma from "~/db.server";
@@ -38,7 +38,7 @@ import {
   InfoIcon,
   LanguageIcon,
 } from "@shopify/polaris-icons";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Supported languages
@@ -57,7 +57,7 @@ const APP_VERSION = "1.0.0";
 // ─────────────────────────────────────────────────────────────────────────────
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const auth = await authenticatePage(request);
-  if (!auth.ok) return auth.response;
+  if (!auth.ok) return authResponse(auth);
   const shop = auth.shop;
 
   return json({
@@ -75,7 +75,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const action = async ({ request }: ActionFunctionArgs) => {
   const auth = await authenticatePage(request);
-  if (!auth.ok) return auth.response;
+  if (!auth.ok) return authResponse(auth);
 
   let formData: FormData;
   try {
@@ -114,9 +114,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function SettingsPage() {
   const { shop, plan, scopes, locale, installedAt, csrfToken } =
-    useLoaderData<typeof loader>();
-  const shopify = useAppBridge();
+    useLoaderData<typeof loader>() ?? { shop: "", plan: "free", scopes: "", locale: "en", installedAt: "", csrfToken: "" };
   const { t } = useTranslation(locale);
+
+  // Defer App Bridge access to client-side only — avoids SSR import issues
+  const [shopify, setShopify] = useState<ReturnType<typeof getAppBridge>>(null);
+  useEffect(() => { setShopify(getAppBridge()); }, []);
 
   const [selectedLocale, setSelectedLocale] = useState(locale || "en");
   const [savedLocale, setSavedLocale] = useState(locale || "en");
@@ -141,7 +144,7 @@ export default function SettingsPage() {
     setSaveSuccess(true);
 
     // 2. Best-effort server save (fire-and-forget) — include CSRF token
-    shopify.idToken().then((token) => {
+    shopify?.idToken?.().then((token: string) => {
       const formData = new FormData();
       formData.set("intent", "saveLocale");
       formData.set("locale", selectedLocale);
@@ -182,7 +185,7 @@ export default function SettingsPage() {
                 <SettingRow
                   icon={CreditCardIcon}
                   label={t("settings.plan")}
-                  value={<Badge tone="new">{plan.toUpperCase()}</Badge>}
+                  value={<Badge tone="new">{(plan || "free").toUpperCase()}</Badge>}
                 />
                 <SettingRow
                   icon={KeyIcon}

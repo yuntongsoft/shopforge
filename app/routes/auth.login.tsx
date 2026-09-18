@@ -4,17 +4,21 @@
  * Date: 2026/08/23
  * Purpose: OAuth login entry point — initiates Shopify OAuth flow
  *
- * Shopify redirects here when authentication is needed.
- * This route MUST call shopify.login() (not authenticate.admin())
- * because the SDK throws if authenticate.admin() is called from the login path.
+ * ARCHITECTURE NOTE:
+ * This route MUST be simple — just pass through to shopify.login().
+ * Do NOT add DB lookups or manual Location header extraction here.
+ * The SDK Response contains internal cookies/state that must be preserved.
+ * Manual extraction breaks the OAuth flow and causes redirect loops.
+ *
+ * For embedded apps with unstable_newEmbeddedAuthStrategy:
+ * - No shop param → redirect to "/" (App Bridge re-enters with proper params)
+ * - With shop param → transparent SDK passthrough
  *
  * Dependencies: shopify.server, logger
  */
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
 import shopify from "~/shopify.server";
-import prisma from "~/db.server";
-import { bounceRedirect, bounceToShopifyUrl } from "~/utils/shopify-auth.server";
 import { createLogger } from "~/utils/logger";
 
 const logger = createLogger({ module: "auth.login" });
@@ -25,53 +29,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   logger.info({ path: url.pathname, shop, search: url.search }, "OAuth login route hit");
 
-  // No shop param — try to resolve from DB (dev environment)
+  // No shop param → redirect to home.
+  // App Bridge will re-enter with proper params (id_token, shop) from the admin context.
+  // Do NOT do DB lookup here — it causes redirect loops in embedded apps.
   if (!shop) {
-    const firstShop = await prisma.shop.findFirst({
-      where: { isDeleted: false },
-      select: { shopifyDomain: true },
-    });
-
-    if (firstShop) {
-      logger.info({ resolvedShop: firstShop.shopifyDomain }, "No shop param, resolved from DB");
-      // Use bounceRedirect to escape iframe — 302 gets blocked by X-Frame-Options
-      return bounceRedirect(`/auth/login?shop=${firstShop.shopifyDomain}`);
-    }
-
-    // No shops in DB — redirect to root
-    logger.warn({}, "No shop param and no shops in DB, redirecting to /");
+    logger.info("No shop param, redirecting to /");
     return redirect("/");
   }
 
   try {
+    logger.info({ shop }, "Calling shopify.login()");
+    // Direct passthrough — preserves SDK internal cookies/state
     const response = await shopify.login(request);
-
-    const hasStatus = "status" in response;
-    const hasHeaders = "headers" in response;
-
-    if (hasStatus && hasHeaders) {
-      // shopify.login() returns a 302 redirect — use bounceRedirect to escape iframe
-      const loginResponse = response as Response;
-      const location = loginResponse.headers.get("Location");
-      if (location) {
-        logger.info({ shop, redirectUrl: location }, "Bouncing to Shopify OAuth");
-        return bounceToShopifyUrl(location);
-      }
-      return loginResponse;
-    } else {
-      logger.error({ shop, errorBody: JSON.stringify(response) }, "shopify.login() returned LoginError");
-      return redirect("/");
-    }
+    return response as Response;
   } catch (error) {
-    if (error instanceof Response) {
-      // SDK throws Response for OAuth redirects — bounce to escape iframe
-      const location = error.headers.get("Location");
-      if (location) {
-        logger.info({ shop, redirectUrl: location }, "Bouncing SDK redirect to top window");
-        return bounceToShopifyUrl(location);
-      }
-      throw error;
-    }
+    // SDK throws Response for redirects — let Remix handle them natively
+    if (error instanceof Response) throw error;
     logger.error({ shop, error: (error as Error)?.message }, "shopify.login() threw error");
     throw error;
   }

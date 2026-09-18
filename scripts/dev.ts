@@ -104,6 +104,20 @@ if (missing.length > 0) {
 }
 log("  ✓ All required variables are set", colors.green);
 
+// Auto-generate CSRF_SECRET if empty (prevents runtime crashes in form actions)
+if (!env.CSRF_SECRET) {
+  try {
+    const crypto = await import("crypto");
+    const secret = crypto.randomBytes(32).toString("hex");
+    let content = fs.readFileSync(envPath, "utf-8");
+    content = content.replace(/^CSRF_SECRET=.*$/m, `CSRF_SECRET=${secret}`);
+    fs.writeFileSync(envPath, content);
+    log("  ✓ Auto-generated CSRF_SECRET", colors.green);
+  } catch {
+    log("  ⚠ Could not auto-generate CSRF_SECRET. Please generate manually.", colors.yellow);
+  }
+}
+
 // === Step 3: Database setup ===
 step(3, 5, "Syncing database schema...");
 

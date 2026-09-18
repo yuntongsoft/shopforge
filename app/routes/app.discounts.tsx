@@ -14,7 +14,7 @@
  */
 import { json } from "@remix-run/node";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { authenticatePage } from "~/utils/shopify-auth.server";
+import { authenticatePage, authResponse } from "~/utils/shopify-auth.server";
 import { discountApi } from "~/demo/services/discount-api";
 import { ruleEngine } from "~/demo/services/rule-engine";
 import { rateLimit, RATE_LIMIT_PRESETS } from "~/utils/rate-limiter";
@@ -32,7 +32,7 @@ const logger = createLogger({ module: "discounts" });
 // ─────────────────────────────────────────────────────────────────────────────
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const auth = await authenticatePage(request);
-  if (!auth.ok) return auth.response;
+  if (!auth.ok) return authResponse(auth);
   const shop = auth.shop;
   const api = discountApi(shop.shopifyDomain);
 
@@ -46,7 +46,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const action = async ({ request }: ActionFunctionArgs) => {
   const auth = await authenticatePage(request);
-  if (!auth.ok) return auth.response;
+  if (!auth.ok) return authResponse(auth);
   const shop = auth.shop;
   const accessToken = auth.accessToken;
 

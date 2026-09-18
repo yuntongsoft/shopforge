@@ -27,8 +27,8 @@ import {
 } from "@shopify/polaris";
 import { CheckIcon } from "@shopify/polaris-icons";
 import { useLoaderData, useRouteLoaderData } from "@remix-run/react";
-import { useAppBridge } from "@shopify/app-bridge-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { getAppBridge } from "~/utils/app-bridge.client";
 import { useTranslation } from "~/utils/i18n";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -67,8 +67,10 @@ const PLAN_FEATURES: Record<string, string[]> = {
 // UI
 // ─────────────────────────────────────────────────────────────────────────────
 export default function PricingPage() {
-  const { currentPlan, plans, shopDomain, csrfToken } = useLoaderData<PricingLoaderData>();
-  const shopify = useAppBridge();
+  const { currentPlan = "", plans = {}, shopDomain = "", csrfToken = "" } = useLoaderData<PricingLoaderData>();
+  // Defer App Bridge access to client-side only
+  const [shopify, setShopify] = useState<ReturnType<typeof getAppBridge>>(null);
+  useEffect(() => { setShopify(getAppBridge()); }, []);
   const { t } = useTranslation(useRouteLoaderData<typeof import("~/routes/app").loader>("routes/app")?.locale);
   const [redirecting, setRedirecting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -77,6 +79,11 @@ export default function PricingPage() {
     setRedirecting(true);
     setErrorMessage(null);
     try {
+      if (!shopify?.idToken) {
+        setErrorMessage("App Bridge not available. Please reload the page.");
+        setRedirecting(false);
+        return;
+      }
       const token = await shopify.idToken();
       const formData = new FormData();
       formData.append("plan", planKey);

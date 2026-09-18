@@ -63,7 +63,7 @@ function statusTone(status: string): "success" | "warning" | "critical" | "info"
 // UI
 // ─────────────────────────────────────────────────────────────────────────────
 export default function DiscountsPage() {
-  const { discounts, csrfToken } = useLoaderData<DiscountsLoaderData>();
+  const { discounts = [], csrfToken = "" } = useLoaderData<DiscountsLoaderData>();
   const actionData = useActionData<DiscountsActionData>();
   const { t } = useTranslation(useRouteLoaderData<typeof import("~/routes/app").loader>("routes/app")?.locale);
   const [showCreate, setShowCreate] = useState(false);

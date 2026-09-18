@@ -71,7 +71,7 @@ function statusTone(status: string): "success" | "warning" | "critical" | "info"
 // UI
 // ─────────────────────────────────────────────────────────────────────────────
 export default function OrderPage() {
-  const { orders, nextCursor, csrfToken } = useLoaderData<OrderLoaderData>();
+  const { orders = [], nextCursor = null, csrfToken = "" } = useLoaderData<OrderLoaderData>();
   const submit = useSubmit();
   const { t } = useTranslation(useRouteLoaderData<typeof import("~/routes/app").loader>("routes/app")?.locale);
 

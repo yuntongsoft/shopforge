@@ -15,8 +15,8 @@
  *
  * Dependencies: @shopify/app-bridge-react
  */
-import { useAppBridge } from "@shopify/app-bridge-react";
 import { useEffect, useState, createContext, useContext, useCallback } from "react";
+import { getAppBridge } from "~/utils/app-bridge.client";
 
 interface ToastMessage {
   id: string;
@@ -49,7 +49,9 @@ export function useToast() {
  * can then call `useToast()` to show native Shopify Admin toasts.
  */
 export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const shopify = useAppBridge();
+  // Defer App Bridge access to client-side only
+  const [shopify, setShopify] = useState<ReturnType<typeof getAppBridge>>(null);
+  useEffect(() => { setShopify(getAppBridge()); }, []);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const showToast = useCallback((message: string, type: "success" | "error" | "info" = "success") => {
@@ -61,7 +63,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (toasts.length === 0) return;
+    if (toasts.length === 0 || !shopify?.toast) return;
     const current = toasts[0];
     shopify.toast.show(current.message, {
       isError: current.type === "error",

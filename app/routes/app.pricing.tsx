@@ -14,7 +14,7 @@
  */
 import { json } from "@remix-run/node";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { authenticatePage } from "~/utils/shopify-auth.server";
+import { authenticatePage, authResponse } from "~/utils/shopify-auth.server";
 import { billingService, BILLING_PLANS } from "~/services/billing.service";
 import type { PlanName } from "~/services/billing.service";
 import { generateCsrfToken, validateCsrfRequest } from "~/utils/csrf";
@@ -31,7 +31,7 @@ const logger = createLogger({ module: "pricing" });
 // ─────────────────────────────────────────────────────────────────────────────
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const auth = await authenticatePage(request);
-  if (!auth.ok) return auth.response;
+  if (!auth.ok) return authResponse(auth);
   const shop = auth.shop;
 
   return json({
@@ -47,7 +47,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const action = async ({ request }: ActionFunctionArgs) => {
   const auth = await authenticatePage(request);
-  if (!auth.ok) return auth.response;
+  if (!auth.ok) return authResponse(auth);
   const shop = auth.shop;
   const accessToken = auth.accessToken;
 
