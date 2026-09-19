@@ -444,6 +444,20 @@ async function exchangeTokenForOfflineAccess(shopDomain: string, idToken: string
 }
 
 /**
+ * Extract id_token from Authorization header or URL param.
+ * Used by billing actions to get the session token for Token Exchange.
+ */
+export function extractIdToken(request: Request): string {
+  const authHeader = request.headers.get("Authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    return authHeader.substring(7);
+  }
+  // Fallback to URL param (for fetcher submissions)
+  const url = new URL(request.url);
+  return url.searchParams.get("id_token") || "";
+}
+
+/**
  * Refresh an expiring offline access token using Token Exchange
  * 
  * Shopify 2026-07+ requires expiring tokens. This function exchanges

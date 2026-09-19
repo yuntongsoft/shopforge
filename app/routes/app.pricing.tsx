@@ -11,14 +11,19 @@
  * Server-only imports live HERE (in app/routes/) so Remix's Vite plugin
  * strips them from the client bundle. The demo component in app/demo/
  * only contains pure React code.
+ *
+ * Architecture (matches traffic-guard):
+ *   - Loader: auth + proactive Shopify API sync (webhook timing fix)
+ *   - No action — subscription creation handled by /api/billing (returns JSON)
+ *   - Frontend fetches /api/billing directly, avoiding SSR HTML parsing
+ *
+ * Dependencies: shopify-auth.server, billing.service, prisma
  */
 import { json } from "@remix-run/node";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { authenticatePage, authResponse } from "~/utils/shopify-auth.server";
+import type { LoaderFunctionArgs } from "@remix-run/node";
+import { authenticatePage, isValidShopDomain, authResponse, extractIdToken, refreshExpiringToken } from "~/utils/shopify-auth.server";
 import { billingService, BILLING_PLANS } from "~/services/billing.service";
-import type { PlanName } from "~/services/billing.service";
-import { generateCsrfToken, validateCsrfRequest } from "~/utils/csrf";
-import { getErrorMessage } from "~/utils/errors";
+import prisma from "~/db.server";
 import { createLogger } from "~/utils/logger";
 
 // Re-export the demo component (pure React, no server deps)
@@ -29,70 +34,87 @@ const logger = createLogger({ module: "pricing" });
 // ─────────────────────────────────────────────────────────────────────────────
 // LOADER — Fetch billing plans and current shop plan
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Pricing page loader — auth with fallback for Shopify confirmation callback.
+ *
+ * Uses authenticatePage (custom implementation) instead of authenticate.admin (SDK).
+ * When Shopify redirects back from the subscription confirmation page, it's a
+ * top-level navigation (no App Bridge). authenticatePage returns { ok: false }
+ * in that case, so we fall back to accepting the URL `shop` param.
+ *
+ * Webhook timing fix: When DB plan is "free", we proactively query Shopify's
+ * GraphQL API to check for active subscriptions. The APP_SUBSCRIPTIONS_UPDATE
+ * webhook may not have arrived yet when the user returns from the confirmation page.
+ */
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const auth = await authenticatePage(request);
-  if (!auth.ok) return authResponse(auth);
-  const shop = auth.shop;
+  let shopDomain: string;
+  let idToken: string | undefined;
+
+  if (auth.ok) {
+    shopDomain = auth.shop.shopifyDomain;
+    idToken = extractIdToken(request);
+  } else if ("needsRefresh" in auth) {
+    // Token exchange failed — return bounce redirect
+    return authResponse(auth);
+  } else {
+    // authenticatePage failed — likely no session token (Shopify billing confirmation callback)
+    // Only accept shop param when it looks like a billing callback redirect
+    const url = new URL(request.url);
+    const shop = url.searchParams.get("shop");
+    const isBillingCallback = url.searchParams.has("charge_id") || url.pathname.includes("pricing");
+
+    if (!shop || !isValidShopDomain(shop) || !isBillingCallback) {
+      return auth.response;
+    }
+
+    const existingShop = await prisma.shop.findUnique({
+      where: { shopifyDomain: shop },
+      select: { id: true },
+    });
+    if (!existingShop) {
+      return auth.response;
+    }
+
+    logger.warn({ shop }, "authenticatePage failed, falling back to shop param for pricing callback");
+    shopDomain = shop;
+  }
+
+  const shop = await prisma.shop.findUnique({
+    where: { shopifyDomain: shopDomain },
+    select: { plan: true },
+  });
+
+  let currentPlan = (shop?.plan || "free") as string;
+
+  // Webhook timing fix: DB says "free" but user just subscribed — query Shopify directly
+  if (currentPlan === "free" && idToken) {
+    try {
+      const accessToken = await refreshExpiringToken(shopDomain, idToken);
+      const sub = await billingService.hasActiveSubscription(shopDomain, accessToken);
+      if (sub.active && sub.planName) {
+        // Map Shopify plan name to our plan key
+        const planKey = Object.entries(BILLING_PLANS).find(
+          ([, v]) => v.apiName.toLowerCase() === sub.planName!.toLowerCase()
+        )?.[0];
+        if (planKey && planKey !== "free") {
+          await prisma.shop.updateMany({
+            where: { shopifyDomain: shopDomain },
+            data: { plan: planKey },
+          });
+          currentPlan = planKey;
+          logger.info({ shop: shopDomain, plan: planKey }, "Plan synced from Shopify API (webhook not yet received)");
+        }
+      }
+    } catch (error) {
+      // Non-fatal — webhook will eventually update the plan
+      logger.warn({ shop: shopDomain, error: String(error) }, "Failed to sync plan from Shopify API");
+    }
+  }
 
   return json({
-    currentPlan: (shop.plan || "free") as string,
+    currentPlan,
     plans: BILLING_PLANS,
-    shopDomain: shop.shopifyDomain,
-    csrfToken: generateCsrfToken(),
+    shopDomain,
   });
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ACTION — Handle subscription creation
-// ─────────────────────────────────────────────────────────────────────────────
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const auth = await authenticatePage(request);
-  if (!auth.ok) return authResponse(auth);
-  const shop = auth.shop;
-  const accessToken = auth.accessToken;
-
-  // CSRF validation for subscription creation (sensitive billing operation)
-  let formData: FormData;
-  try {
-    formData = await validateCsrfRequest(request);
-  } catch {
-    return json({ error: "Invalid or expired CSRF token. Please refresh the page." }, { status: 403 });
-  }
-  const planKey = (formData.get("plan") as string || "").trim();
-
-  if (!planKey || !BILLING_PLANS[planKey as keyof typeof BILLING_PLANS]) {
-    return json({ error: "Invalid plan selected" }, { status: 400 });
-  }
-
-  const plan = BILLING_PLANS[planKey as keyof typeof BILLING_PLANS];
-
-  // Free plan doesn't need billing
-  if (plan.price === 0) {
-    return json({ info: "You are already on the Free plan" });
-  }
-
-  try {
-    const result = await billingService.createSubscription(
-      shop.shopifyDomain,
-      planKey as PlanName,
-      accessToken
-    );
-
-    if ("confirmationUrl" in result && result.confirmationUrl) {
-      // Return JSON so the client can redirect via window.open(url, "_top")
-      return json({ confirmationUrl: result.confirmationUrl });
-    }
-
-    if ("error" in result) {
-      return json({ error: result.error }, { status: 400 });
-    }
-
-    return json({ error: "Unexpected response from billing service" }, { status: 500 });
-  } catch (error) {
-    logger.error(
-      { shop: shop.shopifyDomain, plan: planKey, error: getErrorMessage(error) },
-      "Failed to create subscription"
-    );
-    return json({ error: "Failed to create subscription. Please try again." }, { status: 500 });
-  }
 };

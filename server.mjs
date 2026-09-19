@@ -33,9 +33,10 @@ const app = express();
 // Trust proxy (Nginx / Cloudflare) for correct HTTPS detection
 app.set("trust proxy", true);
 
-// Body size limits — prevent abuse from oversized payloads
-app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ limit: "1mb", extended: true }));
+// ⚠️ NO express.json() or express.urlencoded() here!
+// These middlewares consume the request body stream. Once consumed, the body
+// is unavailable to Remix actions — breaking Shopify webhook HMAC verification.
+// Remix handles body parsing internally via request.json() / request.formData().
 
 // Request logging middleware — structured Pino JSON for log aggregators
 app.use((req, res, next) => {

@@ -7,7 +7,8 @@
  *
  * ============================================================================
  * DEMO COMPONENT — Pure React UI, no server-only imports
- * Server logic (loader/action) lives in routes/app.pricing.tsx
+ * Server logic (loader) lives in routes/app.pricing.tsx
+ * Subscription creation goes through /api/billing (returns JSON)
  * ============================================================================
  *
  * Dependencies: @shopify/polaris, @remix-run/react, i18n
@@ -27,8 +28,7 @@ import {
 } from "@shopify/polaris";
 import { CheckIcon } from "@shopify/polaris-icons";
 import { useLoaderData, useRouteLoaderData } from "@remix-run/react";
-import { useState, useEffect } from "react";
-import { getAppBridge } from "~/utils/app-bridge.client";
+import { useState } from "react";
 import { useTranslation } from "~/utils/i18n";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -36,6 +36,7 @@ import { useTranslation } from "~/utils/i18n";
 // ─────────────────────────────────────────────────────────────────────────────
 interface PricingPlan {
   name: string;
+  apiName: string;
   description: string;
   price: number;
   interval: string;
@@ -46,12 +47,6 @@ interface PricingLoaderData {
   currentPlan: string;
   plans: Record<string, PricingPlan>;
   shopDomain: string;
-  csrfToken: string;
-}
-
-interface PricingActionData {
-  confirmationUrl?: string;
-  error?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -67,10 +62,7 @@ const PLAN_FEATURES: Record<string, string[]> = {
 // UI
 // ─────────────────────────────────────────────────────────────────────────────
 export default function PricingPage() {
-  const { currentPlan = "", plans = {}, shopDomain = "", csrfToken = "" } = useLoaderData<PricingLoaderData>();
-  // Defer App Bridge access to client-side only
-  const [shopify, setShopify] = useState<ReturnType<typeof getAppBridge>>(null);
-  useEffect(() => { setShopify(getAppBridge()); }, []);
+  const { currentPlan = "", plans = {}, shopDomain = "" } = useLoaderData<PricingLoaderData>();
   const { t } = useTranslation(useRouteLoaderData<typeof import("~/routes/app").loader>("routes/app")?.locale);
   const [redirecting, setRedirecting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -79,40 +71,25 @@ export default function PricingPage() {
     setRedirecting(true);
     setErrorMessage(null);
     try {
-      if (!shopify?.idToken) {
-        setErrorMessage("App Bridge not available. Please reload the page.");
-        setRedirecting(false);
-        return;
-      }
-      const token = await shopify.idToken();
       const formData = new FormData();
-      formData.append("plan", planKey);
-      formData.append("csrfToken", csrfToken);
+      formData.set("plan", planKey);
 
-      const res = await fetch(`/app/pricing?id_token=${encodeURIComponent(token)}`, {
+      // POST to /api/billing — returns JSON (not SSR HTML)
+      const res = await fetch("/api/billing", {
         method: "POST",
         body: formData,
       });
 
-      // Remix returns SSR HTML — extract actionData from embedded __remixContext
-      const html = await res.text();
-      const match = html.match(/window\.__remixContext\s*=\s*({.+?})\s*;?\s*<\/script>/s);
-      if (match) {
-        try {
-          const ctx = JSON.parse(match[1]);
-          const actionData = ctx?.state?.actionData?.["routes/app.pricing"] as PricingActionData | undefined;
-          if (actionData?.confirmationUrl) {
-            window.open(actionData.confirmationUrl, "_top");
-          } else if (actionData?.error) {
-            setErrorMessage(actionData.error);
-            setRedirecting(false);
-          } else {
-            setRedirecting(false);
-          }
-        } catch {
-          setErrorMessage("Unexpected response. Please try again.");
-          setRedirecting(false);
-        }
+      const data = await res.json();
+
+      if (data.confirmationUrl) {
+        window.open(data.confirmationUrl, "_top");
+      } else if (data.error === "already_subscribed") {
+        setErrorMessage(null);
+        window.location.reload();
+      } else if (data.error) {
+        setErrorMessage(data.error);
+        setRedirecting(false);
       } else {
         setErrorMessage("Unexpected response. Please try again.");
         setRedirecting(false);

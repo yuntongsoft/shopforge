@@ -15,6 +15,7 @@ import prisma from "~/db.server";
 import { createLogger } from "~/utils/logger";
 import { shopifyAdmin } from "~/services/shopify";
 import { getErrorMessage } from "~/utils/errors";
+import { SHOPIFY_API_VERSION } from "~/utils/shopify-config";
 
 const logger = createLogger({ module: "billing-service" });
 
@@ -25,6 +26,7 @@ const logger = createLogger({ module: "billing-service" });
 export const BILLING_PLANS = {
   free: {
     name: "Free",
+    apiName: "Free",
     price: 0,
     interval: "EVERY_30_DAYS" as const,
     trialDays: 0,
@@ -32,6 +34,7 @@ export const BILLING_PLANS = {
   },
   pro: {
     name: "Pro",
+    apiName: "Pro",
     price: 9.99,
     interval: "EVERY_30_DAYS" as const,
     trialDays: 7,
@@ -39,6 +42,7 @@ export const BILLING_PLANS = {
   },
   business: {
     name: "Business",
+    apiName: "Business",
     price: 29.99,
     interval: "EVERY_30_DAYS" as const,
     trialDays: 7,
@@ -147,7 +151,7 @@ export class BillingService {
    */
   async handleSubscriptionActivated(shop: string, name: string, status: string): Promise<void> {
     const planKey = Object.entries(BILLING_PLANS).find(
-      ([, v]) => v.name.toLowerCase() === name.toLowerCase()
+      ([, v]) => v.apiName.toLowerCase() === name.toLowerCase()
     )?.[0] as PlanName | undefined;
 
     if (!planKey) {
@@ -171,6 +175,39 @@ export class BillingService {
       data: { plan: "free" },
     });
     logger.info({ shop }, "Subscription deactivated, downgraded to free");
+  }
+
+  /**
+   * Check if shop already has an active subscription via Shopify GraphQL API.
+   * Prevents duplicate subscriptions and syncs plan when webhook hasn't arrived yet.
+   */
+  async hasActiveSubscription(shopDomain: string, accessToken: string): Promise<{ active: boolean; planName?: string }> {
+    const query = `{
+      currentAppInstallation {
+        activeSubscriptions { name status }
+      }
+    }`;
+
+    try {
+      const response = await fetch(
+        `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": accessToken,
+          },
+          body: JSON.stringify({ query }),
+        }
+      );
+      const data = await response.json();
+      const subs = data?.data?.currentAppInstallation?.activeSubscriptions || [];
+      const active = subs.find((s: { status: string }) => ["ACTIVE", "ACCEPTED", "PENDING"].includes(s.status));
+      return { active: !!active, planName: active?.name };
+    } catch (e) {
+      logger.warn({ shop: shopDomain, error: (e as Error).message }, "Failed to check active subscriptions");
+      return { active: false };
+    }
   }
 }
 
