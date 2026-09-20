@@ -35,6 +35,8 @@ import { shopifyAdmin } from "~/services/shopify-admin";
 import { createLogger } from "~/utils/logger";
 import { useTranslation } from "~/utils/i18n";
 
+export { PageErrorBoundary as ErrorBoundary } from "~/components/PageErrorBoundary";
+
 const logger = createLogger({ module: "dashboard" });
 
 // ─────────────────────────────────────────────────────────────────────────────

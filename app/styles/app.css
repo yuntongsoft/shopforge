@@ -371,6 +371,13 @@
   margin-bottom: 16px;
 }
 
+.sf-empty-state-image {
+  width: 160px;
+  height: auto;
+  margin-bottom: 16px;
+  opacity: 0.85;
+}
+
 /* ── Steps card background ──────────────────────────────────────────────── */
 .sf-steps-card {
   background: #fafbfb;

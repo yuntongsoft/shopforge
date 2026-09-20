@@ -26,6 +26,8 @@ import { billingService, BILLING_PLANS } from "~/services/billing.service";
 import prisma from "~/db.server";
 import { createLogger } from "~/utils/logger";
 
+export { PageErrorBoundary as ErrorBoundary } from "~/components/PageErrorBoundary";
+
 // Re-export the demo component (pure React, no server deps)
 export { default } from "~/demo/routes/pricing";
 

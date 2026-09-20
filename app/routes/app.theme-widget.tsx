@@ -14,6 +14,7 @@
  */
 import { json } from "@remix-run/node";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { apiError, apiSuccess } from "~/utils/api-response";
 import { authenticatePage, authResponse } from "~/utils/shopify-auth.server";
 import { shopifyAdmin } from "~/services/shopify-admin";
 import { rateLimit, RATE_LIMIT_PRESETS } from "~/utils/rate-limiter";
@@ -23,6 +24,7 @@ import { createLogger } from "~/utils/logger";
 
 // Re-export the demo component (pure React, no server deps)
 export { default } from "~/demo/routes/theme-widget";
+export { PageErrorBoundary as ErrorBoundary } from "~/components/PageErrorBoundary";
 
 const logger = createLogger({ module: "theme-widget" });
 
@@ -62,9 +64,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const limited = await rateLimit(`theme-widget:${shop.id}`, RATE_LIMIT_PRESETS.write);
   if (limited) {
-    return json(
-      { error: `Rate limited. Try again in ${Math.ceil(limited.retryAfter / 1000)}s` },
-      { status: 429, headers: { "Retry-After": String(Math.ceil(limited.retryAfter / 1000)) } }
+    return apiError(
+      `Rate limited. Try again in ${Math.ceil(limited.retryAfter / 1000)}s`,
+      429,
+      undefined,
+      { "Retry-After": String(Math.ceil(limited.retryAfter / 1000)) }
     );
   }
 
@@ -72,15 +76,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     formData = await validateCsrfRequest(request);
   } catch {
-    return json({ error: "Invalid or expired CSRF token. Please refresh the page." }, { status: 403 });
+    return apiError("Invalid or expired CSRF token. Please refresh the page.", 403);
   }
   const heading = (formData.get("heading") as string || "").trim();
   const productCount = formData.get("productCount") as string;
 
-  if (!heading) return json({ error: "Heading is required" });
-  if (!productCount || isNaN(Number(productCount))) return json({ error: "Product count must be a number" });
+  if (!heading) return apiError("Heading is required", 400);
+  if (!productCount || isNaN(Number(productCount))) return apiError("Product count must be a number", 400);
   const productCountNum = Number(productCount);
-  if (productCountNum < 1 || productCountNum > 20) return json({ error: "Product count must be between 1 and 20" });
+  if (productCountNum < 1 || productCountNum > 20) return apiError("Product count must be between 1 and 20", 400);
 
   const api = shopifyAdmin(shop.shopifyDomain);
   try {
@@ -91,9 +95,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       "JSON"
     );
     logger.info({ shop: shop.shopifyDomain }, "Theme widget config updated");
-    return json({ success: true, message: "Widget configuration saved" });
+    return apiSuccess(undefined, "Widget configuration saved");
   } catch (error) {
     logger.error({ shop: shop.shopifyDomain, error: getErrorMessage(error) }, "Failed to save widget config");
-    return json({ error: "Failed to save configuration" });
+    return apiError("Failed to save configuration", 500);
   }
 };

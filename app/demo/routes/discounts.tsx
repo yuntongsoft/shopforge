@@ -26,9 +26,8 @@ import {
   InlineStack,
   BlockStack,
   Text,
-  Icon,
 } from "@shopify/polaris";
-import { PlusIcon, EditIcon, RemoveBackgroundIcon, DiscountIcon } from "@shopify/polaris-icons";
+import { PlusIcon, EditIcon, RemoveBackgroundIcon } from "@shopify/polaris-icons";
 import { useState, useCallback } from "react";
 import type { DiscountRecord } from "~/demo/services/discount-api";
 import { useTranslation } from "~/utils/i18n";
@@ -116,9 +115,7 @@ export default function DiscountsPage() {
         <Card>
           {discounts.length === 0 ? (
             <div className="sf-empty-state">
-              <div className="sf-empty-state-icon">
-                <Icon source={DiscountIcon} tone="base" />
-              </div>
+              <img src="/images/empty-state.png" alt="" className="sf-empty-state-image" />
               <Text as="h2" variant="headingMd">{t("discounts.noDiscounts")}</Text>
               <Text as="p" variant="bodyMd" tone="subdued">{t("discounts.createFirstHint")}</Text>
               <div style={{ marginTop: 16 }}>

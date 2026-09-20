@@ -11,11 +11,11 @@
  * Dependencies: shopify-auth.server, billing.service, prisma
  */
 import type { ActionFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
 import { authenticatePage, extractIdToken, refreshExpiringToken } from "~/utils/shopify-auth.server";
 import { billingService, BILLING_PLANS, type PlanName } from "~/services/billing.service";
 import prisma from "~/db.server";
 import { createLogger } from "~/utils/logger";
+import { apiError, apiSuccess } from "~/utils/api-response";
 
 const logger = createLogger({ module: "api-billing" });
 
@@ -30,7 +30,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const auth = await authenticatePage(request);
   if (!auth.ok) {
     logger.error("Billing action authentication failed");
-    return json({ error: "Authentication required" }, { status: 401 });
+    return apiError("Authentication required", 401);
   }
   const shopDomain = auth.shop.shopifyDomain;
 
@@ -40,7 +40,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const validPlans = Object.keys(BILLING_PLANS).filter((k) => k !== "free");
   if (!validPlans.includes(plan)) {
     logger.error({ plan }, "Invalid plan submitted");
-    return json({ error: "Invalid plan" }, { status: 400 });
+    return apiError("Invalid plan", 400);
   }
 
   // Get access token via Token Exchange (Shopify 2026-07+ expiring tokens)
@@ -50,7 +50,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     accessToken = await refreshExpiringToken(shopDomain, idToken);
   } catch (error) {
     logger.error({ shopDomain, error: String(error) }, "Failed to get access token");
-    return json({ error: "Failed to authenticate. Please reload the page and try again." }, { status: 500 });
+    return apiError("Failed to authenticate. Please reload the page and try again.", 500);
   }
 
   // Prevent duplicate active subscriptions — but sync DB if webhook was missed
@@ -72,7 +72,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
     }
 
-    return json({ error: "already_subscribed" }, { status: 409 });
+    return apiError("already_subscribed", 409);
   }
 
   // Create subscription
@@ -80,9 +80,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   if ("error" in result) {
     logger.error({ shopDomain, plan, error: result.error }, "Subscription creation failed");
-    return json({ error: result.error }, { status: 500 });
+    return apiError(result.error, 500);
   }
 
   logger.info({ shop: shopDomain, plan }, "Subscription created, returning confirmation URL");
-  return json({ confirmationUrl: result.confirmationUrl });
+  return apiSuccess({ confirmationUrl: result.confirmationUrl });
 };
+
+export { PageErrorBoundary as ErrorBoundary } from "~/components/PageErrorBoundary";

@@ -14,6 +14,7 @@
  */
 import { json } from "@remix-run/node";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { apiError, apiSuccess } from "~/utils/api-response";
 import { authenticatePage, authResponse } from "~/utils/shopify-auth.server";
 import { discountApi } from "~/demo/services/discount-api";
 import { ruleEngine } from "~/demo/services/rule-engine";
@@ -24,6 +25,7 @@ import { createLogger } from "~/utils/logger";
 
 // Re-export the demo component (pure React, no server deps)
 export { default } from "~/demo/routes/discounts";
+export { PageErrorBoundary as ErrorBoundary } from "~/components/PageErrorBoundary";
 
 const logger = createLogger({ module: "discounts" });
 
@@ -56,7 +58,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Rate limit write operations
   const limited = await rateLimit(`discounts:${shop.id}`, RATE_LIMIT_PRESETS.write);
   if (limited) {
-    return json({ error: t("discounts.errorRateLimited", { seconds: String(Math.ceil(limited.retryAfter / 1000)) }) }, { status: 429, headers: { "Retry-After": String(Math.ceil(limited.retryAfter / 1000)) } });
+    return apiError(
+      t("discounts.errorRateLimited", { seconds: String(Math.ceil(limited.retryAfter / 1000)) }),
+      429,
+      undefined,
+      { "Retry-After": String(Math.ceil(limited.retryAfter / 1000)) }
+    );
   }
 
   // CSRF validation
@@ -64,7 +71,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     formData = await validateCsrfRequest(request);
   } catch {
-    return json({ error: t("discounts.errorCsrfInvalid") }, { status: 403 });
+    return apiError(t("discounts.errorCsrfInvalid"), 403);
   }
   const actionType = formData.get("_action") as string;
   const engine = ruleEngine(shop.shopifyDomain, accessToken, String(shop.id));
@@ -75,10 +82,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const minSubtotal = (formData.get("minSubtotal") as string || "").trim();
       const discountPercent = formData.get("discountPercent") as string;
 
-      if (!title) return json({ error: t("discounts.errorTitleRequired") });
-      if (!minSubtotal || isNaN(Number(minSubtotal))) return json({ error: t("discounts.errorMinSubtotalNumber") });
-      if (!discountPercent || isNaN(Number(discountPercent))) return json({ error: t("discounts.errorDiscountPercentNumber") });
-      if (Number(discountPercent) <= 0 || Number(discountPercent) > 100) return json({ error: t("discounts.errorDiscountPercentRange") });
+      if (!title) return apiError(t("discounts.errorTitleRequired"), 400);
+      if (!minSubtotal || isNaN(Number(minSubtotal))) return apiError(t("discounts.errorMinSubtotalNumber"), 400);
+      if (!discountPercent || isNaN(Number(discountPercent))) return apiError(t("discounts.errorDiscountPercentNumber"), 400);
+      if (Number(discountPercent) <= 0 || Number(discountPercent) > 100) return apiError(t("discounts.errorDiscountPercentRange"), 400);
 
       const result = await engine.createDiscount({
         type: "order-discount",
@@ -91,11 +98,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       if (result.error) {
         logger.error({ shop: shop.shopifyDomain, error: result.error }, "Failed to create discount");
-        return json({ error: result.error });
+        return apiError(result.error, 500);
       }
 
       logger.info({ shop: shop.shopifyDomain, discountId: result.discount?.id, title }, "Discount created via UI");
-      return json({ success: true, message: t("discounts.successCreated", { title }) });
+      return apiSuccess(undefined, t("discounts.successCreated", { title }));
     }
 
     case "update": {
@@ -103,10 +110,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const minSubtotal = (formData.get("minSubtotal") as string || "").trim();
       const discountPercent = formData.get("discountPercent") as string;
 
-      if (!discountId) return json({ error: t("discounts.errorDiscountIdRequired") });
-      if (!minSubtotal || isNaN(Number(minSubtotal))) return json({ error: t("discounts.errorMinSubtotalNumber") });
-      if (!discountPercent || isNaN(Number(discountPercent))) return json({ error: t("discounts.errorDiscountPercentNumber") });
-      if (Number(discountPercent) <= 0 || Number(discountPercent) > 100) return json({ error: t("discounts.errorDiscountPercentRange") });
+      if (!discountId) return apiError(t("discounts.errorDiscountIdRequired"), 400);
+      if (!minSubtotal || isNaN(Number(minSubtotal))) return apiError(t("discounts.errorMinSubtotalNumber"), 400);
+      if (!discountPercent || isNaN(Number(discountPercent))) return apiError(t("discounts.errorDiscountPercentNumber"), 400);
+      if (Number(discountPercent) <= 0 || Number(discountPercent) > 100) return apiError(t("discounts.errorDiscountPercentRange"), 400);
 
       const result = await engine.updateDiscount(discountId, "order-discount", {
         minSubtotal: Number(minSubtotal),
@@ -115,24 +122,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       if (!result.success) {
         logger.error({ shop: shop.shopifyDomain, error: result.error }, "Failed to update discount");
-        return json({ error: result.error });
+        return apiError(result.error || "Failed to update discount", 500);
       }
 
       logger.info({ shop: shop.shopifyDomain, discountId }, "Discount config updated via UI");
-      return json({ success: true, message: t("discounts.successUpdated") });
+      return apiSuccess(undefined, t("discounts.successUpdated"));
     }
 
     case "delete": {
       const discountId = formData.get("discountId") as string;
-      if (!discountId) return json({ error: t("discounts.errorDiscountIdRequired") });
+      if (!discountId) return apiError(t("discounts.errorDiscountIdRequired"), 400);
 
       const result = await engine.deleteDiscount(discountId);
-      if (!result.success) return json({ error: result.error });
+      if (!result.success) return apiError(result.error || "Failed to delete discount", 500);
 
-      return json({ success: true, message: t("discounts.successDeactivated") });
+      return apiSuccess(undefined, t("discounts.successDeactivated"));
     }
 
     default:
-      return json({ error: t("discounts.errorUnknownAction") });
+      return apiError(t("discounts.errorUnknownAction"), 400);
   }
 };

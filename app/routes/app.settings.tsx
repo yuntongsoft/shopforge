@@ -24,6 +24,7 @@ import { getAppBridge } from "~/utils/app-bridge.client";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { authenticatePage, authResponse } from "~/utils/shopify-auth.server";
+import { apiError, apiSuccess } from "~/utils/api-response";
 import { APP_SCOPES } from "~/shopify.server";
 import { SHOPIFY_API_VERSION } from "~/utils/shopify-config";
 import prisma from "~/db.server";
@@ -39,6 +40,8 @@ import {
   LanguageIcon,
 } from "@shopify/polaris-icons";
 import { useState, useCallback, useEffect } from "react";
+
+export { PageErrorBoundary as ErrorBoundary } from "~/components/PageErrorBoundary";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Supported languages
@@ -81,14 +84,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     formData = await validateCsrfRequest(request);
   } catch {
-    return json({ error: "Invalid or expired CSRF token. Please refresh the page." }, { status: 403 });
+    return apiError("Invalid or expired CSRF token. Please refresh the page.", 403);
   }
   const intent = formData.get("intent");
 
   if (intent === "saveLocale") {
     const locale = String(formData.get("locale") || "en");
     if (!SUPPORTED_LOCALES.some((l) => l.value === locale)) {
-      return json({ error: "Invalid locale" }, { status: 400 });
+      return apiError("Invalid locale", 400);
     }
 
     await prisma.shop.update({
@@ -103,10 +106,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       `shopforge_locale=${locale}; Path=/; Max-Age=31536000; SameSite=None; Secure`
     );
 
-    return json({ success: true, locale }, { headers });
+    return apiSuccess({ locale }, undefined, headers);
   }
 
-  return json({ error: "Unknown action" }, { status: 400 });
+  return apiError("Unknown action", 400);
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
