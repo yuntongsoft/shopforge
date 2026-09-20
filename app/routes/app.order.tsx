@@ -14,6 +14,8 @@
  */
 import { json } from "@remix-run/node";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { apiError, apiSuccess } from "~/utils/api-response";
+import { shopifyAdmin } from "~/services/shopify-admin";
 import { useLoaderData, useSubmit, useRouteLoaderData, useNavigation } from "@remix-run/react";
 import {
   Page,
@@ -29,14 +31,16 @@ import {
   Icon,
   BlockStack,
 } from "@shopify/polaris";
-import { EditIcon, DeleteIcon, PlusIcon } from "@shopify/polaris-icons";
+import { EditIcon, DeleteIcon, PlusIcon, RefreshIcon } from "@shopify/polaris-icons";
 import { useState, useCallback } from "react";
 import prisma from "~/db.server";
 import { authenticatePage, authResponse } from "~/utils/shopify-auth.server";
 import { generateCsrfToken, validateCsrfRequest } from "~/utils/csrf";
 import { rateLimit, RATE_LIMIT_PRESETS } from "~/utils/rate-limiter";
 import { createLogger } from "~/utils/logger";
-import { useTranslation } from "~/utils/i18n";
+import { useTranslation, getTranslation } from "~/utils/i18n";
+
+export { PageErrorBoundary as ErrorBoundary } from "~/components/PageErrorBoundary";
 
 const logger = createLogger({ module: "order" });
 
@@ -52,9 +56,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const cursorParam = url.searchParams.get("cursor");
   const PAGE_SIZE = 50;
 
-  // SECURITY: Validate cursor format — must be a valid Prisma CUID
-  if (cursorParam && !/^[a-z0-9]+$/.test(cursorParam)) {
-    return json({ error: "Invalid cursor parameter" }, { status: 400 });
+  // SECURITY: Validate cursor format — must be a valid Prisma CUID (alphanumeric)
+  if (cursorParam && !/^[a-zA-Z0-9]+$/.test(cursorParam)) {
+    return apiError("Invalid cursor parameter", 400);
   }
 
   const orders = await prisma.order.findMany({
@@ -73,7 +77,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ACTION — Handle create / update / delete (with CSRF + rate limiting + validation)
+// ACTION — Handle create / update / delete / sync
 // ─────────────────────────────────────────────────────────────────────────────
 export const action = async ({ request }: ActionFunctionArgs) => {
   const auth = await authenticatePage(request);
@@ -84,9 +88,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const ip = request.headers.get("x-forwarded-for") || "unknown";
   const blocked = await rateLimit(`order:${shop.id}:${ip}`, RATE_LIMIT_PRESETS.write);
   if (blocked) {
-    return json(
-      { error: `Too many requests. Retry in ${blocked.retryAfter}s` },
-      { status: 429, headers: { "Retry-After": String(Math.ceil(blocked.retryAfter / 1000)) } }
+    return apiError(
+      `Too many requests. Retry in ${blocked.retryAfter}s`,
+      429,
+      undefined,
+      { "Retry-After": String(Math.ceil(blocked.retryAfter / 1000)) }
     );
   }
 
@@ -95,70 +101,99 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     formData = await validateCsrfRequest(request);
   } catch {
-    return json({ error: "Invalid or expired CSRF token. Please refresh the page." }, { status: 403 });
+    return apiError("Invalid or expired CSRF token. Please refresh the page.", 403);
   }
   const intent = formData.get("intent") as string;
 
+  // ── Sync from Shopify ──────────────────────────────────────────────────
+  if (intent === "sync") {
+    try {
+      const api = shopifyAdmin(shop.shopifyDomain);
+      const result = await api.getOrders({ first: 100 });
+
+      await prisma.$transaction(
+        result.items.map((order) =>
+          prisma.order.upsert({
+            where: { id: order.id },
+            update: {
+              orderNumber: order.name,
+              customer: order.email || "",
+              amount: parseFloat(order.totalPrice),
+              status: `${order.financialStatus}/${order.fulfillmentStatus}`,
+            },
+            create: {
+              id: order.id,
+              shopId: shop.id,
+              orderNumber: order.name,
+              customer: order.email || "",
+              amount: parseFloat(order.totalPrice),
+              status: `${order.financialStatus}/${order.fulfillmentStatus}`,
+            },
+          })
+        )
+      );
+
+      logger.info({ shopId: shop.id, synced: result.items.length }, "Orders synced from Shopify");
+      const { t: st } = getTranslation(shop.locale || "en");
+      return apiSuccess(undefined, st("orders.syncSuccess", { count: result.items.length }));
+    } catch (err) {
+      logger.error({ shopId: shop.id, error: err instanceof Error ? err.message : String(err) }, "Shopify sync failed");
+      return apiError("Failed to sync orders from Shopify. Please try again.", 500);
+    }
+  }
+
   switch (intent) {
     case "create": {
-      // Validate orderNumber: required string
       const orderNumberCreate = String(formData.get("orderNumber") || "");
       if (!orderNumberCreate || orderNumberCreate.length > 500) {
-        return json({ error: "Order Number is required and must be under 500 characters" }, { status: 400 });
+        return apiError("Order Number is required and must be under 500 characters", 400);
       }
-      // Validate customer: required string
       const customerCreate = String(formData.get("customer") || "");
       if (!customerCreate || customerCreate.length > 500) {
-        return json({ error: "Customer is required and must be under 500 characters" }, { status: 400 });
+        return apiError("Customer is required and must be under 500 characters", 400);
       }
-      // Validate amount: must be a non-negative number within reasonable range
       const amountCreate = Number(formData.get("amount") || 0);
       if (isNaN(amountCreate) || amountCreate < 0 || amountCreate > 99_999_999) {
-        return json({ error: "Amount must be a number between 0 and 99,999,999" }, { status: 400 });
+        return apiError("Amount must be a number between 0 and 99,999,999", 400);
       }
-      // Validate status: must be a non-empty string
       const statusCreate = String(formData.get("status") || "");
       if (!statusCreate || statusCreate.length > 255) {
-        return json({ error: "Status is required and must be under 255 characters" }, { status: 400 });
+        return apiError("Status is required and must be under 255 characters", 400);
       }
       const item = await prisma.order.create({
         data: {
           shopId: shop.id,
-      orderNumber: orderNumberCreate,
-      customer: customerCreate,
-      amount: amountCreate,
-      status: statusCreate,
-      note: String(formData.get("note") || ""),
+          orderNumber: orderNumberCreate,
+          customer: customerCreate,
+          amount: amountCreate,
+          status: statusCreate,
+          note: String(formData.get("note") || ""),
         },
       });
       logger.info({ shopId: shop.id, id: item.id }, "Order created");
-      return json({ success: true, item });
+      return apiSuccess({ item });
     }
 
     case "update": {
       const id = String(formData.get("id"));
       const existing = await prisma.order.findFirst({ where: { id, shopId: shop.id } });
-      if (!existing) return json({ error: "Not found" }, { status: 404 });
+      if (!existing) return apiError("Not found", 404);
 
-      // Validate orderNumber: required string
       const orderNumberUpdate = String(formData.get("orderNumber") || "");
       if (!orderNumberUpdate || orderNumberUpdate.length > 500) {
-        return json({ error: "Order Number is required and must be under 500 characters" }, { status: 400 });
+        return apiError("Order Number is required and must be under 500 characters", 400);
       }
-      // Validate customer: required string
       const customerUpdate = String(formData.get("customer") || "");
       if (!customerUpdate || customerUpdate.length > 500) {
-        return json({ error: "Customer is required and must be under 500 characters" }, { status: 400 });
+        return apiError("Customer is required and must be under 500 characters", 400);
       }
-      // Validate amount: must be a non-negative number within reasonable range
       const amountUpdate = Number(formData.get("amount") || 0);
       if (isNaN(amountUpdate) || amountUpdate < 0 || amountUpdate > 99_999_999) {
-        return json({ error: "Amount must be a number between 0 and 99,999,999" }, { status: 400 });
+        return apiError("Amount must be a number between 0 and 99,999,999", 400);
       }
-      // Validate status: must be a non-empty string
       const statusUpdate = String(formData.get("status") || "");
       if (!statusUpdate || statusUpdate.length > 255) {
-        return json({ error: "Status is required and must be under 255 characters" }, { status: 400 });
+        return apiError("Status is required and must be under 255 characters", 400);
       }
       const data: Record<string, unknown> = {};
       data.orderNumber = orderNumberUpdate;
@@ -169,21 +204,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       const updated = await prisma.order.update({ where: { id }, data });
       logger.info({ shopId: shop.id, id: updated.id }, "Order updated");
-      return json({ success: true, item: updated });
+      return apiSuccess({ item: updated });
     }
 
     case "delete": {
       const id = String(formData.get("id"));
       const existing = await prisma.order.findFirst({ where: { id, shopId: shop.id } });
-      if (!existing) return json({ error: "Not found" }, { status: 404 });
+      if (!existing) return apiError("Not found", 404);
 
       await prisma.order.delete({ where: { id } });
       logger.info({ shopId: shop.id, id }, "Order deleted");
-      return json({ success: true });
+      return apiSuccess();
     }
 
     default:
-      return json({ error: "Unknown intent" }, { status: 400 });
+      return apiError("Unknown intent", 400);
   }
 };
 
@@ -204,6 +239,23 @@ interface OrderLoaderData {
   nextCursor: string | null;
   shopPlan: string;
   csrfToken: string;
+}
+
+// Status format: "financialStatus/fulfillmentStatus" (e.g., "PAID/UNFULFILLED")
+function statusTone(status: string): "success" | "warning" | "critical" | "info" | "attention" {
+  const [financial, fulfillment] = status.toLowerCase().split("/");
+  switch (financial) {
+    case "paid": return fulfillment === "fulfilled" ? "success" : "info";
+    case "authorized":
+    case "partially_paid": return "attention";
+    case "pending": return "warning";
+    case "partially_refunded": return "warning";
+    case "refunded":
+    case "voided":
+    case "expired": return "critical";
+    case "cancelled": return "critical";
+    default: return "info";
+  }
 }
 
 export default function OrderPage() {
@@ -263,6 +315,10 @@ export default function OrderPage() {
     setModalOpen(false);
   }, [editingId, orderNumber, customer, amount, status, note, csrfToken, submit]);
 
+  const handleSync = useCallback(() => {
+    submit({ intent: "sync", csrfToken }, { method: "post" });
+  }, [csrfToken, submit]);
+
   const handleDeleteRequest = useCallback((id: string) => {
     setDeleteTargetId(id);
     setDeleteModalOpen(true);
@@ -280,10 +336,18 @@ export default function OrderPage() {
     <Page
       title={t("orders.title")}
       primaryAction={{
-        content: t("orders.new"),
+        content: t("orders.newOrder"),
         icon: PlusIcon,
         onAction: handleNew,
       }}
+      secondaryActions={[
+        {
+          content: t("orders.syncFromShopify"),
+          icon: RefreshIcon,
+          onAction: handleSync,
+          loading: isSubmitting,
+        },
+      ]}
     >
       <BlockStack gap="400">
         {error && (
@@ -293,18 +357,19 @@ export default function OrderPage() {
         )}
         <Card>
           {orders.length === 0 ? (
-            <div style={{ padding: "40px", textAlign: "center" }}>
-              <Text as="h2" variant="headingMd">{t("orders.empty")}</Text>
-              <Text as="p" variant="bodyMd" tone="subdued">{t("orders.emptyHint")}</Text>
+            <div className="sf-empty-state">
+              <img src="/images/empty-state.png" alt="" className="sf-empty-state-image" />
+              <Text as="h2" variant="headingMd">{t("orders.noOrders")}</Text>
+              <Text as="p" variant="bodyMd" tone="subdued">{t("orders.noOrdersHint")}</Text>
               <div style={{ marginTop: 16 }}>
                 <Button variant="primary" icon={PlusIcon} onClick={handleNew}>
-                  {t("orders.create")}
+                  {t("orders.createOrder")}
                 </Button>
               </div>
             </div>
           ) : (
             <IndexTable
-              resourceName={{ singular: "order", plural: "orders" }}
+              resourceName={{ singular: t("orders.resourceSingular"), plural: t("orders.resourcePlural") }}
               itemCount={orders.length}
               headings={[
               { title: t("orders.orderNumber") },
@@ -327,7 +392,15 @@ export default function OrderPage() {
                   <Text as="span" variant="bodyMd">{String(item.amount ?? "—")}</Text>
                 </IndexTable.Cell>
                 <IndexTable.Cell>
-                  <Badge>{item.status}</Badge>
+                  {(() => {
+                    const [financial, fulfillment] = (item.status || "").split("/");
+                    return (
+                      <>
+                        {financial && <Badge tone={statusTone(item.status)}>{t(`orders.statusOptions.${financial.toLowerCase()}`)}</Badge>}
+                        {fulfillment && <Badge tone="info">{t(`orders.statusOptions.${fulfillment.toLowerCase()}`)}</Badge>}
+                      </>
+                    );
+                  })()}
                 </IndexTable.Cell>
                   <IndexTable.Cell>
                     <div style={{ display: "flex", gap: "4px" }}>
@@ -363,7 +436,7 @@ export default function OrderPage() {
         <Modal
           open={modalOpen}
           onClose={() => setModalOpen(false)}
-          title={editingId ? t("orders.edit") : t("orders.create")}
+          title={editingId ? t("orders.editOrder") : t("orders.createOrder")}
           primaryAction={{
             content: t("orders.save"),
             onAction: handleSave,
@@ -396,9 +469,9 @@ export default function OrderPage() {
               label={t("orders.status")}
               options={[
                 // TODO: Customize these options based on your business logic
-                { label: t("statusOptions.optionA"), value: "option-a" },
-                { label: t("statusOptions.optionB"), value: "option-b" },
-                { label: t("statusOptions.optionC"), value: "option-c" },
+                { label: t("orders.statusOptions.pending"), value: "pending" },
+                { label: t("orders.statusOptions.paid"), value: "paid" },
+                { label: t("orders.statusOptions.cancelled"), value: "cancelled" },
               ]}
               value={status}
               onChange={setStatus}
@@ -436,28 +509,14 @@ export default function OrderPage() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// i18n keys — Add these to your locale files (en.json, zh.json, etc.)
+// i18n keys — Ensure these exist in your locale files (en.json, zh.json, etc.)
 //
-// {
-//   "orders": {
-//     "title": "Orders",
-//     "new": "New Order",
-//     "create": "Create Order",
-//     "edit": "Edit Order",
-//     "save": "Save",
-//     "cancel": "Cancel",
-//     "delete": "Delete",
-//     "actions": "Actions",
-//     "empty": "No orders yet",
-//     "emptyHint": "Create your first order to get started.",
-//     "loadMore": "Load more",
-//     "deleteConfirmTitle": "Delete Order",
-//     "deleteConfirmMessage": "Are you sure you want to delete this order? This action cannot be undone.",
-//     "deleteConfirmAction": "Delete",
-//     "orderNumber": "Order Number",
-//     "customer": "Customer",
-//     "amount": "Amount",
-//     "status": "Status",
-//   }
+// orders: {
+//   title, newOrder, noOrders, noOrdersHint, createOrder, editOrder,
+//   orderNumber, customer, amount, status, note, actions,
+//   edit, delete, save, cancel, loadMore,
+//   resourceSingular, resourcePlural,
+//   deleteConfirmTitle, deleteConfirmMessage, deleteConfirmAction,
+//   statusOptions: { pending, processing, delivered, ... }
 // }
 // ─────────────────────────────────────────────────────────────────────────────

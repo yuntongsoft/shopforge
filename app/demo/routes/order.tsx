@@ -24,10 +24,9 @@ import {
   Select,
   Text,
   Badge,
-  Icon,
   BlockStack,
 } from "@shopify/polaris";
-import { EditIcon, DeleteIcon, PlusIcon, OrderIcon } from "@shopify/polaris-icons";
+import { EditIcon, DeleteIcon, PlusIcon } from "@shopify/polaris-icons";
 import { useState, useCallback } from "react";
 import { useTranslation } from "~/utils/i18n";
 
@@ -55,13 +54,17 @@ interface OrderLoaderData {
 // Status format: "financialStatus/fulfillmentStatus" (e.g., "paid/unfulfilled")
 // ─────────────────────────────────────────────────────────────────────────────
 function statusTone(status: string): "success" | "warning" | "critical" | "info" | "attention" {
-  const [financial, fulfillment] = status.split("/");
+  const [financial, fulfillment] = status.toLowerCase().split("/");
   // Financial status takes priority for color
   switch (financial) {
     case "paid": return fulfillment === "fulfilled" ? "success" : "info";
+    case "authorized":
+    case "partially_paid": return "attention";
     case "pending": return "warning";
-    case "refunded": return "critical";
-    case "refunding": return "attention";
+    case "partially_refunded": return "warning";
+    case "refunded":
+    case "voided":
+    case "expired": return "critical";
     case "cancelled": return "critical";
     default: return "info";
   }
@@ -135,9 +138,7 @@ export default function OrderPage() {
         <Card>
           {orders.length === 0 ? (
             <div className="sf-empty-state">
-              <div className="sf-empty-state-icon">
-                <Icon source={OrderIcon} tone="base" />
-              </div>
+              <img src="/images/empty-state.png" alt="" className="sf-empty-state-image" />
               <Text as="h2" variant="headingMd">{t("orders.noOrders")}</Text>
               <Text as="p" variant="bodyMd" tone="subdued" >{t("orders.noOrdersHint")}</Text>
               <div style={{ marginTop: 16 }}>
@@ -177,8 +178,8 @@ export default function OrderPage() {
                       const [financial, fulfillment] = (item.status || "").split("/");
                       return (
                         <>
-                          {financial && <Badge tone={statusTone(item.status)}>{t(`orders.statusOptions.${financial}`)}</Badge>}
-                          {fulfillment && <Badge tone="info">{t(`orders.statusOptions.${fulfillment}`)}</Badge>}
+                          {financial && <Badge tone={statusTone(item.status)}>{t(`orders.statusOptions.${financial.toLowerCase()}`)}</Badge>}
+                          {fulfillment && <Badge tone="info">{t(`orders.statusOptions.${fulfillment.toLowerCase()}`)}</Badge>}
                         </>
                       );
                     })()}
