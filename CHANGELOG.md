@@ -5,6 +5,25 @@ All notable changes to ShopForge are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Unified API Response Format**: `api-response.ts` with `apiError()` / `apiSuccess()` / `safeError()` helpers — all action routes now return consistent `{ error, code }` or `{ success, data, message }` structures
+- **PageErrorBoundary**: Reusable error boundary component for all app page routes with i18n support and security hardening (internal errors sanitized to prevent stack/SQL leak)
+- **Shopify Order Sync**: Order page now includes "Sync from Shopify" button that fetches orders via Admin API and upserts to local DB
+- **Complete Shopify Status i18n**: All Shopify financial/fulfillment status values mapped in 4 languages (authorized, voided, partially_paid, in_progress, etc.)
+- **Empty State Images**: Order and discount lists show empty-state.png when no data
+
+### Changed
+- **ErrorBoundary Coverage**: All app page routes now export `PageErrorBoundary` (dashboard, pricing, order, discounts, settings, theme-widget, billing)
+- **Order Status Display**: Split into dual badges (financial + fulfillment) with proper tone colors, handles Shopify uppercase values
+- **Seed Script**: Fixed non-existent `Item` model reference, corrected order status values
+
+### Security
+- `PageErrorBoundary` now distinguishes user-facing errors (Response) from internal errors (TypeError/SQL), only exposing safe messages to clients
+
+---
+
 ## [1.0.0] — 2026-09-16
 
 ### Added

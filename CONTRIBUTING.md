@@ -47,6 +47,8 @@ Demo routes in `app/routes/` are thin wrappers that re-export from `app/demo/rou
 export { loader, action, default } from "~/demo/routes/discounts";
 ```
 
+Some routes (e.g. `app.order.tsx`) have evolved into full CRUD pages with server-side logic (Shopify sync, rate limiting, etc.) and no longer follow the thin-wrapper pattern. This is acceptable — the demo component still lives in `app/demo/` for reference.
+
 ### Testing
 
 All tests live in the unified `tests/` directory:

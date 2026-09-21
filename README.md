@@ -117,7 +117,7 @@ npm run generate YourModel
 ```
 shopforge/
 ├── app/
-│   ├── components/         # Shared UI components (Toast)
+│   ├── components/         # Shared UI components (PageErrorBoundary, Toast)
 │   ├── demo/               # ★ Demo code — delete this folder to remove all examples
 │   │   ├── services/       #   Demo services (rule-engine, discount-api, function-registry)
 │   │   ├── routes/         #   Demo route components (discounts, order, pricing, theme-widget)
@@ -127,7 +127,7 @@ shopforge/
 │   │   ├── app.tsx         # App shell — AppProvider + Polaris + NavMenu
 │   │   ├── app._index.tsx  # Dashboard (real data from Shopify API)
 │   │   ├── app.discounts.tsx   # Thin wrapper → re-exports from demo
-│   │   ├── app.order.tsx       # Thin wrapper → re-exports from demo
+│   │   ├── app.order.tsx       # CRUD page + Shopify order sync
 │   │   ├── app.pricing.tsx     # Thin wrapper → re-exports from demo
 │   │   ├── app.settings.tsx    # Shop info & settings
 │   │   ├── app.theme-widget.tsx# Thin wrapper → re-exports from demo
@@ -144,6 +144,7 @@ shopforge/
 │   │   ├── shopify-admin.ts    # High-level API client (hides GraphQL)
 │   │   └── webhook-registry.ts # Webhook handler registry + built-in handlers
 │   ├── utils/              # Shared utilities
+│   │   ├── api-response.ts     # Unified API response format (apiError/apiSuccess/safeError)
 │   │   ├── app-bridge.client.ts # SSR-safe access to window.shopify (App Bridge)
 │   │   ├── csrf.ts             # CSRF token generation + validation (HMAC-SHA256)
 │   │   ├── encryption.ts       # AES-256-GCM token encryption
