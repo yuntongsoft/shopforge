@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Baseline Migration**: Versioned `20260926000000_baseline` covering all 7 tables (shops, sessions, orders, shop_functions, operation_leases, webhook_executions, privacy_requests) with correct snake_case naming, indexes, and FK constraints
+- **Database Upgrade Tool**: `scripts/upgrade-db.ts` — detects legacy PascalCase databases and plans safe migration to current baseline (dry-run by default, idempotent, no data loss)
+- **CI Migration Validation**: GitHub Actions now validates Prisma schema and migration file integrity as a blocking gate
 - **Unified API Response Format**: `api-response.ts` with `apiError()` / `apiSuccess()` / `safeError()` helpers — all action routes now return consistent `{ error, code }` or `{ success, data, message }` structures
 - **PageErrorBoundary**: Reusable error boundary component for all app page routes with i18n support and security hardening (internal errors sanitized to prevent stack/SQL leak)
 - **Shopify Order Sync**: Order page now includes "Sync from Shopify" button that fetches orders via Admin API and upserts to local DB
@@ -15,9 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Empty State Images**: Order and discount lists show empty-state.png when no data
 
 ### Changed
+- **Rust Function Templates**: Upgraded from shopify_function SDK 0.8 to 2.2.0 with `#[typegen]` macro, `schema.graphql`, `wasm32-unknown-unknown` target, and new output type conventions
+- **Clean Demo Refactor**: Rewritten as declarative change manifest with pure transform functions, CRLF normalization, and dry-run/apply modes
+- **CI Gates**: Typecheck, lint, and tests are now blocking (removed `continue-on-error: true`); Summary job correctly fails on any upstream failure
 - **ErrorBoundary Coverage**: All app page routes now export `PageErrorBoundary` (dashboard, pricing, order, discounts, settings, theme-widget, billing)
 - **Order Status Display**: Split into dual badges (financial + fulfillment) with proper tone colors, handles Shopify uppercase values
 - **Seed Script**: Fixed non-existent `Item` model reference, corrected order status values
+
+### Fixed
+- **Post-Deploy Checklist**: Changed `prisma db push` to `prisma migrate deploy` for production deployments
+- **Setup Functions**: Updated Rust target from `wasm32-wasi` to `wasm32-unknown-unknown`, removed `cargo-wasi` references
 
 ### Security
 - `PageErrorBoundary` now distinguishes user-facing errors (Response) from internal errors (TypeError/SQL), only exposing safe messages to clients

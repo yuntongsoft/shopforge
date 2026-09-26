@@ -1,0 +1,18 @@
+# This defines what data the Function receives from Shopify.
+# For the hello-world template, we only read cart structure.
+# Customize this query to access the data your discount logic needs.
+# IMPORTANT: Total field complexity must stay under 30 (Shopify limit).
+
+query Input {
+  cart {
+    lines {
+      quantity
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          id
+        }
+      }
+    }
+  }
+}

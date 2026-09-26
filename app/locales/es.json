@@ -127,6 +127,20 @@
       "expired": "Expirado"
     }
   },
+  "privacy": {
+    "title": "Solicitudes de privacidad",
+    "hint": "Descarga los registros coincidentes y los detalles. Revisa manualmente el texto libre histórico en Pedidos y no compartas datos de otros clientes. La descarga no completa la solicitud. Los datos sensibles se conservan durante 30 días.",
+    "refresh": "Actualizar solicitudes",
+    "download": "Descargar y revisar",
+    "confirm": "Confirmar finalización",
+    "reviewed": "He revisado el texto libre histórico, completado la exportación o anonimización y gestionado la respuesta al cliente fuera de esta aplicación. Entiendo que descargar no completa la solicitud.",
+    "DATA_REQUEST": "Solicitud de datos",
+    "REDACT": "Anonimización",
+    "PENDING": "Procesamiento pendiente",
+    "REVIEW_REQUIRED": "Revisión manual necesaria",
+    "READY": "Confirmación pendiente",
+    "COMPLETED": "Finalización confirmada"
+  },
   "settings": {
     "title": "Configuración",
     "backToDashboard": "Panel",
@@ -145,6 +159,8 @@
     "languageSaved": "Preferencia de idioma guardada"
   },
   "pricing": {
+    "syncError": "No se pudo verificar la suscripción. Inténtalo más tarde; el plan mostrado podría estar desactualizado.",
+    "pending": "Hay una confirmación pendiente o el resultado anterior es incierto. Completa la confirmación existente o contacta con soporte. No se creará una suscripción duplicada.",
     "title": "Precios",
     "choosePlan": "Elige tu plan",
     "shopLabel": "Tienda",

@@ -127,6 +127,20 @@
       "expired": "Expired"
     }
   },
+  "privacy": {
+    "title": "Privacy requests",
+    "hint": "Download the matching records and request details. Historical free text requires manual review in Orders. Do not share unrelated customer data. Downloads do not complete requests; sensitive request details expire after 30 days.",
+    "refresh": "Refresh requests",
+    "download": "Download / review",
+    "confirm": "Confirm completion",
+    "reviewed": "I have reviewed historical free text, completed the requested export or anonymization, and handled the customer response outside this app. I understand that downloading alone does not complete this request.",
+    "DATA_REQUEST": "Data request",
+    "REDACT": "Anonymization",
+    "PENDING": "Processing pending",
+    "REVIEW_REQUIRED": "Manual review required",
+    "READY": "Awaiting confirmation",
+    "COMPLETED": "Completion confirmed"
+  },
   "settings": {
     "title": "Settings",
     "backToDashboard": "Dashboard",
@@ -145,6 +159,8 @@
     "languageSaved": "Language preference saved"
   },
   "pricing": {
+    "syncError": "Subscription status could not be verified. Retry shortly; the displayed plan may be out of date.",
+    "pending": "A subscription confirmation is pending or its result is uncertain. Complete the existing confirmation or contact support; no duplicate subscription will be created.",
     "title": "Pricing",
     "choosePlan": "Choose your plan",
     "shopLabel": "Shop",

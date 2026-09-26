@@ -14,13 +14,20 @@ model Shop {
   shopifyToken  String    @map("shopify_token")
   shopifyScope  String    @default("") @map("shopify_scope")
   plan          String    @default("free")
+  subscriptionId String? @map("subscription_id")
+  subscriptionStatus String @default("NONE") @map("subscription_status")
+  subscriptionCheckedAt DateTime? @map("subscription_checked_at")
+  initializedAt DateTime? @map("initialized_at")
+  installationId String @default(uuid()) @map("installation_id")
+  pendingSubscriptionId String? @map("pending_subscription_id")
+  pendingPlan String? @map("pending_plan")
+  pendingConfirmation String? @map("pending_confirmation")
   merchantEmail String    @default("") @map("merchant_email")
   locale        String    @default("en")
   isDeleted     Boolean   @default(false) @map("is_deleted")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  sessions      Session[]
   orders        Order[]
   shopFunctions ShopFunction[]
 
@@ -50,10 +57,13 @@ model Session {
   emailVerified       Boolean   @default(false) @map("email_verified")
   refreshToken        String?   @map("refresh_token")
   refreshTokenExpires DateTime? @map("refresh_token_expires")
+  credentialVersion   Int       @default(0) @map("credential_version")
+  refreshLeaseId      String?   @map("refresh_lease_id")
+  refreshLeaseUntil   DateTime? @map("refresh_lease_until")
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  shopRelation Shop? @relation(fields: [shop], references: [shopifyDomain], onDelete: Cascade)
+  // SDK writes Session before creating Shop, so no forward foreign key established.
 
   @@index([shop])
   @@map("sessions")
@@ -65,6 +75,8 @@ model Order {
   shopId      String   @map("shop_id")
   orderNumber String   @default("") @map("order_number")
   customer    String   @default("")
+  customerId  String?  @map("customer_id")
+  externalOrderId String? @map("external_order_id")
   // NOTE: Float used for cross-database compatibility (PostgreSQL/MySQL/SQLite).
   // For production PostgreSQL/MySQL, prefer: Decimal @db.Decimal(18, 2)
   amount      Float    @default(0)
@@ -97,4 +109,49 @@ model ShopFunction {
   @@unique([shopId, ruleType])
   // shopId is already covered by the unique [shopId, ruleType] constraint
   @@map("shop_functions")
+}
+
+/// Business operation short-term lease; network calls executed outside transaction.
+model OperationLease {
+  key String @id
+  owner String
+  expiresAt DateTime @map("expires_at")
+  @@map("operation_leases")
+}
+
+model WebhookExecution {
+  id String @id @default(uuid())
+  shop String
+  webhookId String @map("webhook_id")
+  topic String
+  handlerId String @map("handler_id")
+  status String @default("PENDING")
+  attempts Int @default(0)
+  leaseId String? @map("lease_id")
+  leaseUntil DateTime? @map("lease_until")
+  triggeredAt DateTime? @map("triggered_at")
+  traceId String @map("trace_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@unique([shop, webhookId, handlerId])
+  @@index([shop, createdAt])
+  @@map("webhook_executions")
+}
+
+model PrivacyRequest {
+  id String @id @default(uuid())
+  shop String
+  webhookId String @map("webhook_id")
+  kind String
+  status String @default("PENDING")
+  sealedPayload String? @map("sealed_payload")
+  expiresAt DateTime @map("expires_at")
+  completedAt DateTime? @map("completed_at")
+  confirmedAt DateTime? @map("confirmed_at")
+  confirmedBy String? @map("confirmed_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@unique([shop, webhookId])
+  @@index([shop, createdAt])
+  @@map("privacy_requests")
 }

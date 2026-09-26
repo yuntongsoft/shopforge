@@ -2,12 +2,20 @@
 # ShopForge — GitHub Actions CI Pipeline
 # =============================================================================
 # Runs on every push and pull request to main/master branches.
-# Validates: type checking, linting, tests, and build.
 #
-# To customize:
-#   - Add deployment jobs for Vercel, Railway, or your own infrastructure
-#   - Add E2E tests with Playwright
-#   - Add security scanning with Snyk or Trivy
+# Blocking gates (failures prevent merge):
+#   - Type check (includes scripts and config)
+#   - Lint (zero errors, zero warnings)
+#   - Tests (all unit + integration tests)
+#   - Production build
+#   - Migration validation (prisma validate + SQL file presence)
+#
+# Note: `prisma migrate validate` (drift detection) requires a live PostgreSQL
+# connection and is NOT run here. It should be executed before deploying or in
+# a separate integration workflow with a PG service container.
+#
+# Non-blocking (informational):
+#   - Docker build
 # =============================================================================
 
 name: CI
@@ -25,12 +33,12 @@ concurrency:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # Quality Gates: typecheck, lint, test
+  # Quality Gates: typecheck, lint, test — all BLOCKING
   # ─────────────────────────────────────────────────────────────────────────────
   quality:
     name: Quality Checks
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Checkout code
@@ -48,17 +56,14 @@ jobs:
       - name: Generate Prisma Client
         run: npx prisma generate
 
-      - name: Type check
+      - name: Type check (blocking)
         run: npm run typecheck
-        continue-on-error: true  # Non-blocking for scaffold initial release
 
-      - name: Lint
+      - name: Lint (blocking)
         run: npm run lint
-        continue-on-error: true
 
-      - name: Run tests
+      - name: Run tests (blocking)
         run: npm test -- --run
-        continue-on-error: true  # Non-blocking for scaffold initial release
         env:
           SHOPIFY_API_KEY: test-key
           SHOPIFY_API_SECRET: test-secret-32-chars-minimum!!
@@ -66,14 +71,51 @@ jobs:
           CSRF_SECRET: test-csrf-secret
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Build: verify the app builds successfully
+  # Migration validation — verify prisma schema and migrations are consistent
+  # ─────────────────────────────────────────────────────────────────────────────
+  migration:
+    name: Migration Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Validate schema syntax
+        run: npx prisma validate
+
+      - name: Check migration format
+        run: |
+          # Verify all migration directories contain migration.sql
+          for dir in prisma/migrations/*/; do
+            if [ ! -f "$dir/migration.sql" ]; then
+              echo "ERROR: Migration directory $dir is missing migration.sql"
+              exit 1
+            fi
+          done
+          echo "All migrations have valid SQL files"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Build: verify the app builds successfully — BLOCKING
   # ─────────────────────────────────────────────────────────────────────────────
   build:
     name: Build
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: quality
-    if: always()  # Run even if quality checks have warnings
 
     steps:
       - name: Checkout code
@@ -88,19 +130,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build app
+      - name: Build app (blocking)
         run: npm run build
         env:
           SHOPIFY_API_KEY: test-key
           SHOPIFY_API_SECRET: test-secret-32-chars-minimum!!
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Docker: verify the Dockerfile builds (optional, runs in parallel with build)
+  # Docker: verify the Dockerfile builds (non-blocking, informational)
   # ─────────────────────────────────────────────────────────────────────────────
   docker:
     name: Docker Build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    continue-on-error: true
 
     steps:
       - name: Checkout code
@@ -117,21 +160,30 @@ jobs:
           tags: shopforge:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
-        continue-on-error: true  # Non-blocking until Docker is required
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Summary: report status (useful for branch protection rules)
+  # Summary: report real failure status (for branch protection rules)
   # ─────────────────────────────────────────────────────────────────────────────
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
     timeout-minutes: 1
-    needs: [quality, build]
+    needs: [quality, migration, build]
     if: always()
 
     steps:
       - name: Check results
         run: |
           echo "Quality: ${{ needs.quality.result }}"
+          echo "Migration: ${{ needs.migration.result }}"
           echo "Build: ${{ needs.build.result }}"
-          echo "✅ CI pipeline completed (check individual job statuses)"
+
+          # Fail the summary if any blocking job failed
+          if [ "${{ needs.quality.result }}" != "success" ] || \
+             [ "${{ needs.migration.result }}" != "success" ] || \
+             [ "${{ needs.build.result }}" != "success" ]; then
+            echo "❌ CI pipeline failed — check individual job statuses"
+            exit 1
+          fi
+
+          echo "✅ CI pipeline passed — all blocking gates succeeded"

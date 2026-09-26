@@ -70,3 +70,19 @@ export function decrypt(text: string): string {
   decrypted += decipher.final("utf8");
   return decrypted;
 }
+
+/**
+ * Decrypt a stored secret (e.g. OAuth token retrieved from DB).
+ * Alias for decrypt() — clarifies intent when reading encrypted values from persistent storage.
+ */
+export function readStoredSecret(text: string): string {
+  return decrypt(text);
+}
+
+/**
+ * Decrypt sensitive user-facing text (e.g. customer PII from order data).
+ * Alias for decrypt() — clarifies intent when reading encrypted PII.
+ */
+export function readSensitiveText(text: string): string {
+  return decrypt(text);
+}

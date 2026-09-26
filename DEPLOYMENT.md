@@ -172,7 +172,7 @@ volumes:
 ## Post-Deploy Checklist
 
 - [ ] Set all required environment variables
-- [ ] Run `npx prisma db push` to create/sync database schema
+- [ ] Run `npx prisma migrate deploy` to apply versioned migrations (production)
 - [ ] Update `shopify.app.toml` with production URLs
 - [ ] Run `npx shopify app deploy` to push config to Shopify
 - [ ] Verify OAuth flow works end-to-end
@@ -181,6 +181,60 @@ volumes:
 - [ ] Set up health check monitoring (cron → `/health?detail=true`)
 - [ ] Configure log aggregation (Datadog, Logtail, etc.)
 - [ ] Set up error tracking (Sentry, Bugsnag, etc.)
+
+---
+
+## Database Upgrade (from legacy installations)
+
+If you are upgrading from a ShopForge version prior to the baseline migration (`20260926000000_baseline`), your database uses PascalCase table names (`Shop`, `Session`, `Order`, `ShopFunction`) and is missing several columns and infrastructure tables.
+
+> **New installations**: Just run `npx prisma migrate deploy` — the baseline migration handles everything.
+
+### Upgrade tool
+
+```bash
+# Step 1: Dry-run — detect state and preview changes (no modifications)
+npm run upgrade:db
+
+# Step 2: Apply upgrade (with interactive confirmation)
+npm run upgrade:db -- --apply
+
+# Step 3: Skip confirmation (for CI/automated scripts)
+npm run upgrade:db -- --apply --force
+```
+
+### What the upgrade does
+
+1. Detects database state (fresh / legacy / current / mixed / failed-migration)
+2. Drops the legacy `Session→Shop` foreign key (SDK writes sessions before Shop exists)
+3. Renames tables from PascalCase to snake_case (`Shop` → `shops`, etc.)
+4. Renames indexes and foreign key constraints to match baseline naming
+5. Adds missing columns to `shops` (subscription fields, installation_id, locale, etc.)
+6. Adds missing columns to `sessions` (credential_version, refresh_lease_*)
+7. Adds missing columns to `orders` (customer_id, external_order_id)
+8. Converts `orders.amount` from DECIMAL(18,2) to DOUBLE PRECISION
+9. Creates infrastructure tables (operation_leases, webhook_executions, privacy_requests)
+
+### Safety guarantees
+
+- **Default is dry-run** — no changes are made unless you pass `--apply`
+- **Idempotent** — uses `IF EXISTS` / `IF NOT EXISTS` throughout; safe to re-run
+- **No data loss** — never generates `DROP TABLE`, `DELETE`, or `TRUNCATE`
+- **Conflict detection** — aborts on mixed naming or unrecognized states
+- **PostgreSQL only** — MySQL/SQLite should start fresh with `prisma migrate deploy`
+
+### After upgrade
+
+```bash
+# Reconcile Prisma migration history (official patching workflow)
+# See: https://www.prisma.io/docs/orm/prisma-migrate/workflows/patching-and-hotfixing
+
+# Regenerate Prisma Client
+npx prisma generate
+
+# Verify schema alignment
+npx prisma validate
+```
 
 ## Shopify App Store Submission
 

@@ -30,9 +30,9 @@ Battle-tested boilerplate with OAuth, Billing, Functions, GDPR compliance, and m
 - **Landing Page** — Next.js 14 marketing site in npm workspace (blog, SEO, OG image, pricing)
 - **Demo Isolation** — All demo code in `app/demo/` + `tests/demo/`, one command to remove
 - **Docker Ready** — Multi-stage Dockerfile + `docker-compose.yml` (App + PostgreSQL + optional Redis)
-- **CI/CD** — GitHub Actions pipeline (typecheck → test → build → Docker) out of the box
-- **Prisma Migrations** — Initial migration aligned with schema, `db:migrate:create` for new migrations
-- **Unit Testing** — 130+ Vitest cases in unified `tests/` directory
+- **CI/CD** — GitHub Actions pipeline (typecheck → lint → test → migration validate → build → Docker) with blocking gates
+- **Prisma Migrations** — Versioned baseline migration + `upgrade:db` tool for legacy database upgrades
+- **Unit Testing** — 400+ Vitest cases in unified `tests/` directory
 - **ESLint + Prettier** — Pre-configured TypeScript + React linting
 
 ---
@@ -173,8 +173,8 @@ shopforge/
 │   ├── content/blog/       # Markdown blog posts
 │   └── lib/blog.ts         # Markdown parser
 ├── prisma/
-│   ├── schema.prisma       # Database schema (Shop, Session, ShopFunction)
-│   └── migrations/         # Prisma migration files
+│   ├── schema.prisma       # Database schema (Shop, Session, Order, ShopFunction, OperationLease, WebhookExecution, PrivacyRequest)
+│   └── migrations/         # Versioned Prisma migrations (baseline + upgrade tool)
 ├── scripts/
 │   ├── _internal/          # Internal tools (developers don't touch these)
 │   │   ├── generate-function.ts  # Function scaffolding
@@ -182,14 +182,16 @@ shopforge/
 │   │   └── test-function.ts      # Local Function test runner
 │   ├── lib/                # Shared script modules
 │   │   ├── compile-functions.ts  # Rust Function compilation (dev + build)
-│   │   └── schema-parser.ts      # Prisma schema parser
+│   │   ├── schema-parser.ts      # Prisma schema parser
+│   │   └── upgrade-db.ts         # Database upgrade planning (pure logic)
 │   ├── build.ts            # Production build (compile Functions + Remix)
 │   ├── check.ts            # Cross-platform type check + test runner
 │   ├── clean-demo.ts       # Remove all demo code automatically
 │   ├── dev.ts              # Smart dev server (auto env, db, Functions)
 │   ├── generate.ts         # CRUD page code generator
 │   ├── seed.ts             # Database seed with demo data
-│   └── setup-functions.ts  # Copy Function templates to extensions/
+│   ├── setup-functions.ts  # Copy Function templates to extensions/
+│   └── upgrade-db.ts       # Database upgrade CLI (legacy → current baseline)
 ├── templates/              # Function templates (Rust)
 │   ├── hello-function-rust/    # Minimal Function (verify WASM build)
 │   └── order-discount-rust/    # Order discount with metafield config
@@ -382,6 +384,7 @@ npx shopify app deploy
 | `npm run db:seed` | Seed database with demo data |
 | `npm run functions:setup` | Copy Function templates to `extensions/` |
 | `npm run clean:demo` | Remove all demo code (services, routes, tests) |
+| `npm run upgrade:db` | Upgrade legacy database to current baseline (dry-run by default) |
 | `npm run lint` | Run ESLint |
 | `npm run format` | Run Prettier |
 | `npm test` | Run Vitest (watch mode) |

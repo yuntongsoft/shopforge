@@ -92,7 +92,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       METAFIELD_NAMESPACE,
       METAFIELD_KEY,
       JSON.stringify({ heading, productCount: productCountNum }),
-      "JSON"
+      "json"
     );
     logger.info({ shop: shop.shopifyDomain }, "Theme widget config updated");
     return apiSuccess(undefined, "Widget configuration saved");

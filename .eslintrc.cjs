@@ -4,6 +4,7 @@
  */
 module.exports = {
   root: true,
+  ignorePatterns: ["build/", "node_modules/", "landing/.next/", "coverage/", "**/target/"],
   parserOptions: {
     ecmaVersion: "latest",
     sourceType: "module",

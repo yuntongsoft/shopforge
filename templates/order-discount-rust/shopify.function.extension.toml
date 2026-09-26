@@ -1,5 +1,5 @@
 # Order Discount Function
-# Target: product_discounts — applies percentage/fixed discount to cart lines
+# Target: purchase.product-discount.run — applies percentage discount to cart lines
 # when the cart subtotal meets a configurable minimum threshold.
 #
 # Config is read from a metafield on the discount node:
@@ -10,19 +10,20 @@
 # How to extend:
 #   1. Add fields to the JSON config struct in run.rs
 #   2. Add corresponding fields to input.graphql (keep complexity < 30!)
-#   3. Update the run() logic to use new conditions
+#   3. Update the run logic to use new conditions
 
 name = "order-discount"
-type = "product_discounts"
 api_version = "2026-07"
-uid = "3dfee65d-f9a6-6dd6-37e5-f13423d290cf6d229b2f"
 
 [build]
-command = "cargo wasi build --release"
-path = "target/wasm32-wasi/release/order-discount.wasm"
+command = "cargo build --target wasm32-unknown-unknown --release --locked"
+path = "target/wasm32-unknown-unknown/release/order_discount.wasm"
 watch = ["src/**/*.rs"]
 
-# UI paths: where Remix routes handle the discount creation/editing form
-[ui.paths]
-create = "/app/discounts/:functionId/new"
-details = "/app/discounts/:functionId/:id"
+[[extensions.targeting]]
+target = "purchase.product-discount.run"
+input_query = "src/input.graphql"
+export = "run"
+
+[extensions.ui]
+paths = { create = "/app/discounts/:functionId/new", details = "/app/discounts/:functionId/:id" }

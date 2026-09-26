@@ -1,13 +1,15 @@
 {
   "name": "shopforge",
   "version": "1.0.0",
-  "description": "ShopForge \u2014 Production-ready Shopify App Starter Kit",
+  "description": "ShopForge — Production-ready Shopify App Starter Kit",
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",
-  "workspaces": ["landing"],
+  "workspaces": [
+    "landing"
+  ],
   "scripts": {
     "build": "tsx scripts/build.ts",
-    "postinstall": "node scripts/setup-db.cjs && prisma generate",
+    "postinstall": "prisma generate",
     "setup": "node scripts/setup-db.cjs",
     "db:push": "prisma db push --skip-generate",
     "db:migrate": "prisma migrate deploy",
@@ -25,6 +27,7 @@
     "generate": "tsx scripts/generate.ts",
     "functions:setup": "tsx scripts/setup-functions.ts",
     "clean:demo": "tsx scripts/clean-demo.ts",
+    "upgrade:db": "tsx scripts/upgrade-db.ts",
     "landing:dev": "npm --workspace=landing run dev",
     "landing:build": "npm --workspace=landing run build",
     "landing:start": "npm --workspace=landing run start"
@@ -51,6 +54,7 @@
   },
   "devDependencies": {
     "@remix-run/dev": "^2.15.0",
+    "@types/express": "^4.17.25",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
@@ -66,6 +70,9 @@
     "vitest": "^2.1.5"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.12.0"
+  },
+  "optionalDependencies": {
+    "ioredis": "^5.11.1"
   }
 }

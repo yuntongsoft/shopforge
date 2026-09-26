@@ -1,27 +1,13 @@
 /**
- * Order Discount Function — Spend Threshold → Percentage Off
+ * Discount logic: parse config → check threshold → build discounts.
  *
- * Pattern: Read config from metafield → check cart condition → apply discount
- *
- * Config metafield (written by Remix UI when merchant creates discount):
- *   namespace: "custom", key: "discount_config"
- *   value: { "minSubtotal": "50.0", "discountPercent": 10.0 }
- *
- * Logic:
- *   1. Parse config from discount.metafield
- *   2. Sum cart subtotal
- *   3. If subtotal >= minSubtarget → apply discountPercent to all eligible lines
- *   4. Otherwise → no discount (return empty targets)
- *
- * Performance: < 50ms execution, < 64KB memory (Shopify limits)
+ * The `process` function receives the typed input from the Shopify runtime
+ * and returns a `FunctionRunResult` with applicable discounts.
  */
+use super::schema;
 use shopify_function::prelude::*;
 use shopify_function::Result;
 use serde::Deserialize;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Config struct — matches the JSON stored in the metafield
-// ─────────────────────────────────────────────────────────────────────────────
 
 /// Discount configuration stored in discount node's metafield.
 ///
@@ -29,111 +15,89 @@ use serde::Deserialize;
 /// ```json
 /// { "minSubtotal": "50.0", "discountPercent": 10.0 }
 /// ```
-///
-/// Extend this struct to add more conditions:
-///   - `maxSubtotal: Option<String>` — upper limit
-///   - `customerTags: Option<Vec<String>>` — customer segment filter
-///   - `excludeProductIds: Option<Vec<String>>` — excluded products
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct DiscountConfig {
     /// Minimum cart subtotal (in shop currency, e.g. "50.0")
     min_subtotal: String,
-    /// Discount percentage (0-100)
+    /// Discount percentage (0–100)
     discount_percent: f64,
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main entry point
-// ─────────────────────────────────────────────────────────────────────────────
-
-#[shopify_function::shopify_function]
-fn run(input: input::ResponseData) -> Result<output::FunctionRunResult> {
+/// Main discount processing entry point.
+pub fn process(input: schema::run::Input) -> Result<schema::FunctionRunResult> {
     // Step 1: Parse config from metafield
     let config = match parse_config(&input) {
         Some(c) => c,
-        None => {
-            // No config or invalid → no discount (safe fallback)
-            return Ok(output::FunctionRunResult {
-                discounts: vec![],
-                discountApplicationStrategy: output::DiscountApplicationStrategy::FIRST,
-            });
-        }
+        None => return Ok(empty_result()),
     };
 
     // Step 2: Calculate cart subtotal
     let subtotal: f64 = input
-        .cart
-        .cost
-        .subtotal_amount
-        .amount
-        .parse()
-        .unwrap_or(0.0);
+        .cart()
+        .cost()
+        .subtotal_amount()
+        .amount()
+        .0;
 
     // Step 3: Check if cart meets threshold
     let min_subtotal: f64 = config.min_subtotal.parse().unwrap_or(0.0);
     if subtotal < min_subtotal {
-        // Cart doesn't meet minimum → no discount
-        return Ok(output::FunctionRunResult {
-            discounts: vec![],
-            discountApplicationStrategy: output::DiscountApplicationStrategy::FIRST,
-        });
+        return Ok(empty_result());
     }
 
-    // Step 4: Build discount targets (all eligible cart lines)
-    let targets: Vec<output::Target> = input
-        .cart
-        .lines
+    // Step 4: Build discount targets (all cart lines)
+    let targets: Vec<schema::Target> = input
+        .cart()
+        .lines()
         .iter()
-        .filter_map(|line| {
-            // Only discount ProductVariant merchandise (not gift cards, etc.)
-            match &line.merchandise {
-                input::CartLinesMerchandise::ProductVariant(variant) => {
-                    // Optional: filter by product tag
-                    // if !variant.product.has_any_tag { return None; }
-
-                    Some(output::Target {
-                        id: variant.id.clone(),
-                    })
-                }
-                _ => None,
-            }
+        .map(|line| schema::Target {
+            cart_line: Some(schema::CartLineTarget {
+                id: line.id().clone(),
+            }),
+            product_variant: None,
         })
         .collect();
 
     // Step 5: Return discount
-    Ok(output::FunctionRunResult {
-        discounts: vec![output::Discount {
-            message: Some(format!("{}% off orders over ${}", config.discount_percent as i32, min_subtotal as i32)),
+    Ok(schema::FunctionRunResult {
+        discount_application_strategy: schema::DiscountApplicationStrategy::First,
+        discounts: vec![schema::Discount {
+            message: Some(format!(
+                "{}% off orders over ${}",
+                config.discount_percent as i32,
+                min_subtotal as i32
+            )),
             targets,
-            value: output::Value::Percentage(output::Percentage {
-                value: Decimal(config.discount_percent),
-            }),
-            conditions: None,
+            value: schema::Value {
+                percentage: Some(schema::Percentage {
+                    value: Decimal(config.discount_percent),
+                }),
+                fixed_amount: None,
+            },
         }],
-        discountApplicationStrategy: output::DiscountApplicationStrategy::FIRST,
     })
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Parse DiscountConfig from the discount node's metafield.
+/// Parse DiscountConfig from the discount node's metafield value.
 /// Returns None if metafield is missing or JSON is invalid.
-fn parse_config(input: &input::ResponseData) -> Option<DiscountConfig> {
-    let metafield_value = input
-        .discount
-        .metafield
-        .as_ref()
-        .map(|m| m.value.as_str())
-        .unwrap_or("");
+fn parse_config(input: &schema::run::Input) -> Option<DiscountConfig> {
+    let metafield = input.discount()?.metafield()?;
+    let value = metafield.value();
 
-    if metafield_value.is_empty() {
+    if value.is_empty() {
         return None;
     }
 
-    serde_json::from_str::<DiscountConfig>(metafield_value).ok()
+    serde_json::from_str::<DiscountConfig>(value).ok()
+}
+
+/// Return an empty result (no discounts applied).
+fn empty_result() -> schema::FunctionRunResult {
+    schema::FunctionRunResult {
+        discount_application_strategy: schema::DiscountApplicationStrategy::First,
+        discounts: vec![],
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

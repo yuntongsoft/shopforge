@@ -1,0 +1,152 @@
+"""
+Product Discount Function API — minimal schema for typegen.
+
+Download the full, authoritative schema via Shopify CLI:
+  shopify app function typegen
+
+Input-side types (Cart, CartLine, etc.) use `type` (object).
+Output-side types (FunctionRunResult, Discount, etc.) use `input`
+so that typegen generates Serialize implementations automatically.
+"""
+
+schema {
+  query: Input
+}
+
+"Root query — your Function receives exactly these fields."
+type Input {
+  cart: Cart!
+}
+
+"A cart contains the merchandise a customer intends to purchase."
+type Cart {
+  lines: [CartLine!]!
+}
+
+"A single line in the cart."
+type CartLine {
+  id: ID!
+  quantity: Int!
+  merchandise: Merchandise!
+  cost: CartLineCost!
+  attribute(key: String!): String
+}
+
+"Union of possible merchandise types."
+union Merchandise = ProductVariant
+
+"A product variant."
+type ProductVariant {
+  id: ID!
+  product: Product!
+  title: String!
+}
+
+"A product."
+type Product {
+  id: ID!
+  title: String!
+  hasAnyTag(tags: [String!]!): Boolean!
+}
+
+"Cost breakdown for a cart line."
+type CartLineCost {
+  subtotalAmount: MoneyV2!
+}
+
+"A money value with currency."
+type MoneyV2 {
+  amount: Decimal!
+  currencyCode: CurrencyCode!
+}
+
+"The result returned by the Function."
+input FunctionRunResult {
+  discountApplicationStrategy: DiscountApplicationStrategy!
+  discounts: [Discount!]!
+}
+
+"Strategy for applying discounts."
+enum DiscountApplicationStrategy {
+  FIRST
+  MAXIMUM
+}
+
+"A discount to apply."
+input Discount {
+  message: String
+  targets: [Target!]!
+  value: Value!
+}
+
+"The target of a discount."
+input Target {
+  cartLine: CartLineTarget
+  productVariant: ProductVariantTarget
+}
+
+"Target a cart line."
+input CartLineTarget {
+  id: ID!
+}
+
+"Target a product variant with optional quantity limit."
+input ProductVariantTarget {
+  id: ID!
+  quantity: Int
+}
+
+"The value of a discount."
+input Value {
+  percentage: Percentage
+  fixedAmount: FixedAmount
+}
+
+"A percentage discount."
+input Percentage {
+  value: Decimal!
+}
+
+"A fixed-amount discount."
+input FixedAmount {
+  amount: Decimal!
+}
+
+"A decimal number represented as a string for precision."
+scalar Decimal
+
+"An ISO 4217 currency code (e.g. USD, EUR)."
+enum CurrencyCode {
+  USD
+  EUR
+  GBP
+  CAD
+  AUD
+  JPY
+  CNY
+  OTHER
+}
+
+"An ISO 639-1 language code (e.g. en, zh)."
+enum LanguageCode {
+  EN
+  ZH
+  JA
+  ES
+  FR
+  DE
+  OTHER
+}
+
+"An ISO 3166-1 alpha-2 country code (e.g. US, CN)."
+enum CountryCode {
+  US
+  CN
+  JP
+  GB
+  CA
+  AU
+  DE
+  FR
+  OTHER
+}

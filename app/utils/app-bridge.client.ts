@@ -46,3 +46,31 @@ export function getAppBridge(): ShopifyAppBridge | null {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (window as any).shopify ?? null;
 }
+
+/**
+ * Authenticated fetch wrapper for Shopify embedded apps.
+ *
+ * Uses App Bridge's idToken() to obtain a session token and attaches it
+ * as an Authorization header. This allows Remix loaders to verify the
+ * request came from the embedded app iframe.
+ *
+ * @param url - The URL to fetch
+ * @param init - Optional fetch options (method, body, headers, etc.)
+ * @returns The fetch Response
+ */
+export async function authenticatedFetch(
+  url: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const shopify = getAppBridge();
+  const headers = new Headers(init?.headers);
+  if (shopify) {
+    try {
+      const token = await shopify.idToken();
+      headers.set("Authorization", `Bearer ${token}`);
+    } catch {
+      // idToken may fail if App Bridge hasn't fully initialized; proceed without token
+    }
+  }
+  return fetch(url, { ...init, headers });
+}
