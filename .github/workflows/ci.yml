@@ -39,6 +39,8 @@ jobs:
     name: Quality Checks
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
 
     steps:
       - name: Checkout code
@@ -77,6 +79,8 @@ jobs:
     name: Migration Validation
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
 
     steps:
       - name: Checkout code
@@ -116,6 +120,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: quality
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
 
     steps:
       - name: Checkout code

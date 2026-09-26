@@ -108,7 +108,6 @@ async function getRedisClient(): Promise<unknown | null> {
 
   try {
     // Dynamic import to avoid hard dependency on ioredis
-    // @ts-expect-error - ioredis is an optional peer dependency
     const Redis = (await import("ioredis")).default;
     redisClient = new Redis(redisUrl, {
       maxRetriesPerRequest: 3,

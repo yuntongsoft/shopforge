@@ -52,7 +52,6 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/server.mjs ./
-COPY --from=builder /app/runtime ./runtime
 COPY --from=builder /app/public ./public
 
 # Health check — verify server is responding

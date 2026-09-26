@@ -18,7 +18,7 @@ export function PrivacyPanel({ csrfToken }: { csrfToken: string }) {
   const load = useCallback(async (cursor?: string) => {
     const response = await authenticatedFetch(`/api/privacy${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
     const result: ApiSuccessResponse<PrivacyPage> | ApiErrorResponse = await response.json();
-    if (!response.ok || !result.success || !result.data) throw new Error("Privacy list failed");
+    if (!response.ok || !("success" in result) || !result.success || !result.data) throw new Error("Privacy list failed");
     const data = result.data;
     setPage((previous) => ({ items: cursor ? [...previous.items, ...data.items] : data.items, nextCursor: data.nextCursor }));
   }, []);

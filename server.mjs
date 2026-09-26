@@ -1,3 +1,4 @@
+// @ts-nocheck — Production server entry point, build artifacts not available at typecheck time
 /**
  * File: server.mjs
  * Author: yuntongsoft

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-nocheck — CommonJS setup script, not type-checked
 /**
  * ShopForge Database Setup
  *
