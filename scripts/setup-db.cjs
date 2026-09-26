@@ -49,10 +49,6 @@ function success(msg) {
   console.log(`  \x1b[32m✓\x1b[0m ${msg}`);
 }
 
-function warn(msg) {
-  console.log(`  \x1b[33m⚠\x1b[0m ${msg}`);
-}
-
 function fail(msg) {
   console.error(`  \x1b[31m✗\x1b[0m ${msg}`);
   process.exit(1);
