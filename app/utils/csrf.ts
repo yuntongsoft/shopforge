@@ -33,9 +33,7 @@ const logger = createLogger({ module: "csrf" });
  * to prevent using a predictable default in production.
  */
 function getCsrfSecret(): string {
-  // In production, CSRF_SECRET or SESSION_SECRET must be set.
-  // In dev, fall back to SHOPIFY_API_SECRET (adequate for HMAC signing).
-  const secret = process.env.CSRF_SECRET || process.env.SESSION_SECRET || process.env.SHOPIFY_API_SECRET;
+  const secret = process.env.CSRF_SECRET || process.env.SESSION_SECRET;
   if (!secret) {
     throw new Error(
       "[csrf] CSRF_SECRET or SESSION_SECRET environment variable is required.\n" +

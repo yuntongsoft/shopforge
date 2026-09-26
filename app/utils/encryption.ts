@@ -81,8 +81,24 @@ export function readStoredSecret(text: string): string {
 
 /**
  * Decrypt sensitive user-facing text (e.g. customer PII from order data).
- * Alias for decrypt() — clarifies intent when reading encrypted PII.
+ * Returns plain text as-is when the value is not in encrypted format,
+ * allowing transparent handling for mixed encrypted/plaintext columns.
+ *
+ * Recognised encrypted formats:
+ *   - Versioned:  "enc:<version>:..." — always attempts decrypt; throws on corruption
+ *   - Legacy:     "<iv-hex24>:<authTag-hex32>:<ciphertext-hex>" — structural detection
  */
 export function readSensitiveText(text: string): string {
-  return decrypt(text);
+  // Versioned ciphertext format ("enc:v1:...") — must never silently degrade
+  if (text.startsWith("enc:")) {
+    return decrypt(text);
+  }
+
+  const parts = text.split(":");
+  // Legacy encrypted format: "iv(24hex):authTag(32hex):ciphertext(hex)"
+  // Only attempt decrypt when the structure matches; otherwise treat as plaintext.
+  if (parts.length === 3 && /^[0-9a-f]{24}$/.test(parts[0]) && /^[0-9a-f]{32}$/.test(parts[1])) {
+    return decrypt(text);
+  }
+  return text;
 }

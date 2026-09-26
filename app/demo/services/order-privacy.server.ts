@@ -16,8 +16,8 @@ registerPrivacyProvider({
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       });
       for (const order of orders) {
-        const customer = readSensitiveText(order.customer);
-        const note = readSensitiveText(order.note);
+        const customer = readSensitiveText(order.customer ?? "");
+        const note = readSensitiveText(order.note ?? "");
         const rawId = (id: string) => id.split("/").pop()!;
         const matched = !!(subject.customerId && order.customerId && rawId(order.customerId) === subject.customerId) ||
           subject.orderIds.includes(rawId(order.externalOrderId || order.id)) || !!(subject.email && customer === subject.email);
