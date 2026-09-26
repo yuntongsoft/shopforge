@@ -104,13 +104,24 @@ jobs:
       - name: Check migration format
         run: |
           # Verify all migration directories contain migration.sql
-          for dir in prisma/migrations/*/; do
-            if [ ! -f "$dir/migration.sql" ]; then
-              echo "ERROR: Migration directory $dir is missing migration.sql"
-              exit 1
+          if [ -d "prisma/migrations" ]; then
+            found=0
+            for dir in prisma/migrations/*/; do
+              [ -d "$dir" ] || continue
+              found=1
+              if [ ! -f "$dir/migration.sql" ]; then
+                echo "ERROR: Migration directory $dir is missing migration.sql"
+                exit 1
+              fi
+            done
+            if [ "$found" -eq 1 ]; then
+              echo "All migrations have valid SQL files"
+            else
+              echo "No migration directories found — skipping"
             fi
-          done
-          echo "All migrations have valid SQL files"
+          else
+            echo "No prisma/migrations directory — skipping"
+          fi
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Build: verify the app builds successfully — BLOCKING

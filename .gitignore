@@ -37,10 +37,9 @@ desktop.ini
 .shopify/
 
 # ── Prisma ───────────────────────────────────────────────────────────────────
-# SQLite dev database and auto-generated migrations
+# SQLite dev database (migrations are tracked in git)
 prisma/*.db
 prisma/*.db-journal
-prisma/migrations/
 
 # ── Test coverage ────────────────────────────────────────────────────────────
 coverage/
