@@ -61,7 +61,7 @@ export type WebhookTopic =
   | "CHECKOUTS_CREATE"
   | "CHECKOUTS_UPDATE"
   | "CHECKOUTS_DELETE"
-  | (string & {}); // Allow arbitrary topics while providing autocomplete
+  | (string & Record<string, never>); // Allow arbitrary topics while providing autocomplete
 
 /** Handler function signature — developer only sees shop domain + payload */
 export type WebhookHandler = (shop: string, payload: unknown) => void | Promise<void>;

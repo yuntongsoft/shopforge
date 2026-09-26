@@ -112,7 +112,7 @@ function updatePrismaSchema(): void {
   content = content.replace(/\/\/\/ ShopFunction —[\s\S]*?model ShopFunction \{[\s\S]*?\n\}\n/g, "");
 
   // Remove shopFunctions relation from Shop model
-  content = content.replace(/\n  shopFunctions ShopFunction\[\]\n/g, "\n");
+  content = content.replace(/\n {2}shopFunctions ShopFunction\[\]\n/g, "\n");
 
   fs.writeFileSync(schemaPath, content);
   console.log("  ✓ Updated prisma/schema.prisma (removed Order + ShopFunction models)");
