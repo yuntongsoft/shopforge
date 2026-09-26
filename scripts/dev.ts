@@ -4,16 +4,16 @@
  *          so developers don't need to understand tunnel URL synchronization.
  *
  * What it does:
- *   1. Checks if .env exists, creates from .env.example if not
- *   2. Validates required environment variables
- *   3. Pushes Prisma schema to database
- *   4. Checks Extensions — crash recovery + auto-compile Rust Functions
- *   5. Launches `shopify app dev` with proper configuration
+ *   1. Validates that .env exists and required variables are set
+ *   2. Checks Extensions — crash recovery + auto-compile Rust Functions
+ *   3. Launches `shopify app dev` with proper configuration
+ *
+ * Database setup is handled separately by `npm run setup` (scripts/setup-db.cjs).
  *
  * Usage:
  *   npm run dev
  */
-import { execSync, spawn } from "child_process";
+import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -46,42 +46,16 @@ function step(num: number, total: number, message: string) {
 }
 
 // === Step 1: Check .env ===
-step(1, 5, "Checking environment configuration...");
+step(1, 3, "Checking environment configuration...");
 
 const envPath = path.join(ROOT, ".env");
-const envExamplePath = path.join(ROOT, ".env.example");
 
 if (!fs.existsSync(envPath)) {
-  if (fs.existsSync(envExamplePath)) {
-    fs.copyFileSync(envExamplePath, envPath);
-    log("  ✓ Created .env from .env.example", colors.green);
-    log("  ⚠ Please fill in the required values in .env and run `npm run dev` again.", colors.yellow);
-    
-    // Generate encryption key
-    try {
-      const crypto = await import("crypto");
-      const key = crypto.randomBytes(32).toString("hex");
-      let envContent = fs.readFileSync(envPath, "utf-8");
-      envContent = envContent.replace("ENCRYPTION_KEY=", `ENCRYPTION_KEY=${key}`);
-      fs.writeFileSync(envPath, envContent);
-      log("  ✓ Auto-generated ENCRYPTION_KEY", colors.green);
-    } catch {
-      log("  ⚠ Could not auto-generate ENCRYPTION_KEY. Please generate manually.", colors.yellow);
-    }
-    
-    process.exit(0);
-  } else {
-    log("  ✗ .env.example not found!", colors.red);
-    process.exit(1);
-  }
-} else {
-  log("  ✓ .env exists", colors.green);
+  log("  ✗ .env not found. Run `npm run setup` first to configure your database.", colors.red);
+  process.exit(1);
 }
 
-// === Step 2: Validate required env vars ===
-step(2, 5, "Validating environment variables...");
-
-// Load .env manually since we're not using dotenv
+// Validate required env vars (read-only — never writes to .env)
 const envContent = fs.readFileSync(envPath, "utf-8");
 const env: Record<string, string> = {};
 for (const rawLine of envContent.split(/\r?\n/)) {
@@ -104,35 +78,8 @@ if (missing.length > 0) {
 }
 log("  ✓ All required variables are set", colors.green);
 
-// Auto-generate CSRF_SECRET if empty (prevents runtime crashes in form actions)
-if (!env.CSRF_SECRET) {
-  try {
-    const crypto = await import("crypto");
-    const secret = crypto.randomBytes(32).toString("hex");
-    let content = fs.readFileSync(envPath, "utf-8");
-    content = content.replace(/^CSRF_SECRET=.*$/m, `CSRF_SECRET=${secret}`);
-    fs.writeFileSync(envPath, content);
-    log("  ✓ Auto-generated CSRF_SECRET", colors.green);
-  } catch {
-    log("  ⚠ Could not auto-generate CSRF_SECRET. Please generate manually.", colors.yellow);
-  }
-}
-
-// === Step 3: Database setup ===
-step(3, 5, "Syncing database schema...");
-
-try {
-  execSync("npx prisma db push --skip-generate --accept-data-loss", {
-    cwd: ROOT,
-    stdio: "pipe",
-  });
-  log("  ✓ Database schema synced", colors.green);
-} catch (error) {
-  log("  ⚠ Database sync failed. If this is your first run, please run `npm run db:push` manually.", colors.yellow);
-}
-
-// === Step 4: Extensions — crash recovery + auto-compile Functions ===
-step(4, 5, "Checking Extensions...");
+// === Step 2: Extensions — crash recovery + auto-compile Functions ===
+step(2, 3, "Checking Extensions...");
 
 const extensionsDir = path.join(ROOT, "extensions");
 const extensionsBackup = path.join(ROOT, "extensions.disabled");
@@ -191,12 +138,12 @@ if (toolchain.hasRust && toolchain.hasWasmTarget && rustFunctions.length > 0) {
   log("  ℹ No Functions in extensions/ — skip", colors.cyan);
 }
 
-// === Step 5: Launch dev server ===
-step(5, 5, "Starting Shopify dev server...");
+// === Step 3: Launch dev server ===
+step(3, 3, "Starting Shopify dev server...");
 
 // Check if .shopify config directory exists (app already configured)
 const shopifyConfigDir = path.join(ROOT, ".shopify");
-const hasShopifyConfig = fs.existsSync(shopifyConfigDir) && 
+const hasShopifyConfig = fs.existsSync(shopifyConfigDir) &&
   fs.existsSync(path.join(shopifyConfigDir, "project.json"));
 
 // Forward all args to shopify app dev
@@ -240,7 +187,7 @@ process.on("uncaughtException", (err) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Helpers (for crash recovery in Step 4)
+// Helpers (for crash recovery in Step 2)
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Check if directory is empty (ignoring .gitkeep)

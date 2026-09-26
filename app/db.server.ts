@@ -12,50 +12,100 @@
  *   const shop = await prisma.shop.findUnique({ where: { shopifyDomain: "example.myshopify.com" } });
  */
 import { PrismaClient } from "@prisma/client";
+import { createLogger } from "~/utils/logger.server";
+
+const logger = createLogger({ module: "db" });
 
 declare global {
   // eslint-disable-next-line no-var
   var __prisma: PrismaClient | undefined;
 }
 
+// ─── URL helpers ─────────────────────────────────────────────────────────────
+
+const isSQLite = (url: string) => url.startsWith("file:");
+
+const isServerless = () =>
+  process.env.VERCEL === "1" || process.env.AWS_LAMBDA === "1";
+
 /**
- * Create a Prisma client with environment-specific connection settings.
- *
- * - Serverless (Vercel/AWS Lambda): connection_limit=1 to avoid connection explosion
- * - Standalone server: connection_limit=10 for better throughput
+ * Check whether a query string already defines `connection_limit`.
+ * We parse the URL instead of doing a naive string search so that
+ * occurrences in the password or path are not misidentified.
  */
+const urlHasConnectionLimit = (url: string): boolean => {
+  try {
+    return new URL(url).searchParams.has("connection_limit");
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Supplement a database URL with default pool parameters.
+ * Explicit params in the URL are never overwritten.
+ * SQLite URLs are returned untouched (file-based, no pooling).
+ */
+function withPoolParams(url: string): string {
+  if (isSQLite(url) || urlHasConnectionLimit(url)) return url;
+
+  const parsed = new URL(url);
+  const defaults: Record<string, string> = isServerless()
+    ? { connection_limit: "1", pool_timeout: "30", connect_timeout: "30" }
+    : { connection_limit: "10", pool_timeout: "30", connect_timeout: "10" };
+
+  for (const [key, value] of Object.entries(defaults)) {
+    if (!parsed.searchParams.has(key)) {
+      parsed.searchParams.set(key, value);
+    }
+  }
+  return parsed.toString();
+}
+
+// ─── Sensitive-log redaction ────────────────────────────────────────────────
+
+const SENSITIVE_RE =
+  /(?:secret|token|password|key|bearer)[\s=:]+[^\s,;]+|[\w.+-]+@[\w-]+\.[\w.-]+/gi;
+
+function redact(message: string): string {
+  return message.replace(SENSITIVE_RE, "********");
+}
+
+// ─── Client factory ─────────────────────────────────────────────────────────
+
 function createPrismaClient() {
-  const baseUrl = process.env.DATABASE_URL;
-  if (!baseUrl) {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
     throw new Error("DATABASE_URL is not set");
   }
 
-  const isServerless = process.env.VERCEL === "1" || process.env.AWS_LAMBDA === "1";
-  const url = !baseUrl.includes("connection_limit")
-    ? `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}${isServerless ? "connection_limit=1&pool_timeout=30&connect_timeout=30" : "connection_limit=10&pool_timeout=30&connect_timeout=10"}`
-    : baseUrl;
+  const url = withPoolParams(databaseUrl);
 
-  return new PrismaClient({
-    log: process.env.NODE_ENV === "development"
-      ? ["query", "error", "warn"]
-      : ["error", "warn"],
-    datasources: {
-      db: { url },
-    },
+  const client = new PrismaClient({
+    log: [
+      { emit: "event", level: "error" },
+      { emit: "event", level: "warn" },
+    ],
+    datasources: { db: { url } },
   });
+
+  // Attach event-based log listeners that redact PII / credentials
+  client.$on("error" as never, ((e: { message: string }) => {
+    logger.error(redact(e.message));
+  }) as never);
+  client.$on("warn" as never, ((e: { message: string }) => {
+    logger.warn(redact(e.message));
+  }) as never);
+
+  return client;
 }
 
-const prisma = global.__prisma ?? createPrismaClient();
+// ─── Singleton (dev hot-reload safe) ────────────────────────────────────────
 
-// Warm up connection in production
-if (process.env.NODE_ENV === "production") {
-  prisma.$connect().catch((err: Error) => {
-    console.error("[Prisma] Failed to connect:", err.message);
-  });
-}
+const prisma = (globalThis.__prisma as PrismaClient | undefined) ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
-  global.__prisma = prisma;
+  globalThis.__prisma = prisma;
 }
 
 export default prisma;
