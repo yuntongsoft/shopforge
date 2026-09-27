@@ -113,6 +113,50 @@ function choose(message: string, options: { key: string; label: string }[], defa
 
 // ─── Phase 1: Database ──────────────────────────────────────────────────────
 
+/**
+ * Ensure schema.prisma provider matches DATABASE_URL in .env.
+ * Called on EVERY setup run — even when .env already exists — to prevent
+ * the #1 source of bugs: schema says sqlite but .env says postgresql (or vice versa).
+ */
+function syncSchemaWithEnv() {
+  if (!fs.existsSync(ENV_PATH) || !fs.existsSync(SCHEMA_PATH)) return;
+
+  const envContent = fs.readFileSync(ENV_PATH, "utf-8");
+  const dbUrlMatch = envContent.match(/^DATABASE_URL=(.+)$/m);
+  const dbUrl = dbUrlMatch?.[1]?.trim() || "";
+  if (!dbUrl) return;
+
+  // Derive expected provider from URL
+  const expectedProvider = dbUrl.startsWith("file:")
+    ? "sqlite"
+    : dbUrl.startsWith("postgresql://") || dbUrl.startsWith("postgres://")
+      ? "postgresql"
+      : dbUrl.startsWith("mysql://")
+        ? "mysql"
+        : "";
+  if (!expectedProvider) return;
+
+  // Check current schema provider
+  const schemaContent = fs.readFileSync(SCHEMA_PATH, "utf-8");
+  const providerMatch = schemaContent.match(/datasource\s+db\s*\{[^}]*provider\s*=\s*"([^"]*)"/);
+  const schemaProvider = providerMatch?.[1] || "";
+
+  if (schemaProvider === expectedProvider) return; // Already in sync
+
+  // Mismatch — fix it
+  warn(`schema.prisma provider "${schemaProvider}" doesn't match DATABASE_URL (expected "${expectedProvider}")`);
+  updateSchemaProvider(expectedProvider);
+
+  // Verify
+  const verify = fs.readFileSync(SCHEMA_PATH, "utf-8");
+  const vm = verify.match(/datasource\s+db\s*\{[^}]*provider\s*=\s*"([^"]*)"/);
+  if (vm?.[1] === expectedProvider) {
+    ok(`schema.prisma synced → provider "${expectedProvider}"`);
+  } else {
+    warn("Failed to sync schema — please edit prisma/schema.prisma manually");
+  }
+}
+
 function updateSchemaProvider(provider: string) {
   // Strategy: Generate schema.prisma from template — 100% reliable, no regex.
   const templatePath = path.join(ROOT, "prisma", "schema.prisma.template");
@@ -355,12 +399,17 @@ async function main() {
   }
 
   // ── Guard: .env already exists ────────────────────────────────────────
-  if (fs.existsSync(ENV_PATH) && !opts.provider && !opts.quick) {
+  // If .env has valid Shopify keys, skip interactive setup but ALWAYS sync schema.
+  // This is the #1 bug source: user changes .env but schema stays stale.
+  if (fs.existsSync(ENV_PATH) && !opts.provider) {
     const envContent = fs.readFileSync(ENV_PATH, "utf-8");
     const hasKey = /SHOPIFY_API_KEY=.+/.test(envContent) && !/SHOPIFY_API_KEY=your_/.test(envContent);
     if (hasKey) {
       ok(".env already configured");
-      console.log(`    To reconfigure: delete .env and run ${C.cyan}npm run setup${C.reset}`);
+      syncSchemaWithEnv();
+      if (!opts.quick && !opts.dbOnly) {
+        console.log(`    To reconfigure: delete .env and run ${C.cyan}npm run setup${C.reset}`);
+      }
       return;
     }
     warn(".env exists but Shopify credentials are missing — continuing setup");
