@@ -13,6 +13,7 @@
  *   npm run dev
  */
 import { spawn, spawnSync } from "child_process";
+import { createHash } from "crypto";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -164,19 +165,26 @@ if (expectedProvider && fs.existsSync(schemaPath)) {
     }
   }
 
-  // ALWAYS regenerate Prisma Client — postinstall runs before .env exists,
-  // so the Client may be generated with the wrong provider (e.g., sqlite default).
-  // This ensures Client matches the current schema + DATABASE_URL.
-  const genResult = spawnSync("npx", ["prisma", "generate"], {
-    cwd: ROOT,
-    stdio: "pipe",
-    timeout: 30_000,
-    shell: process.platform === "win32",
-  });
-  if (genResult.status === 0) {
-    log(`  Prisma Client ready`, C.green);
-  } else {
-    log(`  Prisma generate warning: ${genResult.stderr?.toString().split("\n")[0] || "unknown"}`, C.yellow);
+  // Regenerate Prisma Client only when schema changed.
+  // postinstall was removed from package.json because it runs before .env exists,
+  // generating Client with the wrong provider. Now dev.ts owns generation.
+  const schemaHash = createHash("sha256").update(fs.readFileSync(schemaPath, "utf-8")).digest("hex");
+  const hashFile = path.join(ROOT, "prisma", ".schema-hash");
+  const prevHash = fs.existsSync(hashFile) ? fs.readFileSync(hashFile, "utf-8").trim() : "";
+
+  if (schemaHash !== prevHash) {
+    const genResult = spawnSync("npx", ["prisma", "generate"], {
+      cwd: ROOT,
+      stdio: "pipe",
+      timeout: 30_000,
+      shell: process.platform === "win32",
+    });
+    if (genResult.status === 0) {
+      fs.writeFileSync(hashFile, schemaHash);
+      log(`  Prisma Client regenerated`, C.green);
+    } else {
+      log(`  Prisma generate failed: ${genResult.stderr?.toString().split("\n")[0] || "unknown"}`, C.red);
+    }
   }
 } else if (!expectedProvider && dbUrl) {
   log(`  ⚠ Cannot determine provider from DATABASE_URL: ${dbUrl.slice(0, 30)}...`, C.yellow);

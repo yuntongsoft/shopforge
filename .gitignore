@@ -40,6 +40,7 @@ desktop.ini
 # SQLite dev database (migrations are tracked in git)
 prisma/*.db
 prisma/*.db-journal
+prisma/.schema-hash
 
 # ── Test coverage ────────────────────────────────────────────────────────────
 coverage/

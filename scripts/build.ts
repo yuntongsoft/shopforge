@@ -35,7 +35,7 @@ function log(msg: string, color = colors.reset) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Step 1: Compile Functions (if Rust toolchain available)
 // ─────────────────────────────────────────────────────────────────────────────
-log("\n[1/2] Checking Functions...", colors.cyan);
+log("\n[1/3] Checking Functions...", colors.cyan);
 
 const toolchain = detectRustToolchain();
 const rustFunctions = findRustFunctions(ROOT);
@@ -57,9 +57,25 @@ if (toolchain.hasRust && toolchain.hasWasmTarget && rustFunctions.length > 0) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Step 2: Run Remix build
+// Step 2: Generate Prisma Client (ensure it matches current schema)
 // ─────────────────────────────────────────────────────────────────────────────
-log("\n[2/2] Building application...", colors.cyan);
+log("\n[2/3] Generating Prisma Client...", colors.cyan);
+
+try {
+  execSync("npx prisma generate", {
+    cwd: ROOT,
+    stdio: "inherit",
+  });
+  log("  ✓ Prisma Client ready", colors.green);
+} catch (err) {
+  log("\n  ✗ Prisma generate failed\n", colors.red);
+  process.exit(1);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Step 3: Run Remix build
+// ─────────────────────────────────────────────────────────────────────────────
+log("\n[3/3] Building application...", colors.cyan);
 
 try {
   execSync("npx remix vite:build", {
