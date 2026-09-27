@@ -317,6 +317,12 @@ function parseArgs() {
     dbOnly: false,
   };
 
+  // Priority: --provider flag > SHOPFORGE_DB_PROVIDER env var (set by create-shopforge)
+  const envProvider = process.env.SHOPFORGE_DB_PROVIDER;
+  if (envProvider) {
+    result.provider = envProvider;
+  }
+
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
       case "--provider":

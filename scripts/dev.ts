@@ -116,35 +116,67 @@ if (missing.length > 0) {
 
 step(2, 4, "Checking database...");
 
+// P0: Ensure schema.prisma provider ALWAYS matches DATABASE_URL.
+// This is the single source of truth — runs on EVERY startup, no exceptions.
+const schemaPath = path.join(ROOT, "prisma", "schema.prisma");
+const templatePath = path.join(ROOT, "prisma", "schema.prisma.template");
 const dbUrl = env.DATABASE_URL || "";
 const isSqlite = dbUrl.startsWith("file:");
 
-// P0: Verify schema.prisma provider matches DATABASE_URL
-const schemaPath = path.join(ROOT, "prisma", "schema.prisma");
-const templatePath = path.join(ROOT, "prisma", "schema.prisma.template");
-if (fs.existsSync(schemaPath)) {
+function deriveProvider(url: string): string {
+  if (url.startsWith("file:")) return "sqlite";
+  if (url.startsWith("postgresql://") || url.startsWith("postgres://")) return "postgresql";
+  if (url.startsWith("mysql://")) return "mysql";
+  return "";
+}
+
+const expectedProvider = deriveProvider(dbUrl);
+
+if (expectedProvider && fs.existsSync(schemaPath)) {
   const schemaContent = fs.readFileSync(schemaPath, "utf-8");
   const providerMatch = schemaContent.match(/datasource\s+db\s*\{[^}]*provider\s*=\s*"([^"]*)"/);
   const schemaProvider = providerMatch?.[1] || "";
-  const expectedProvider = isSqlite ? "sqlite" : dbUrl.startsWith("postgresql") || dbUrl.startsWith("postgres") ? "postgresql" : dbUrl.startsWith("mysql") ? "mysql" : "";
 
-  if (expectedProvider && schemaProvider && schemaProvider !== expectedProvider) {
-    log(`  ⚠ schema.prisma provider "${schemaProvider}" doesn't match DATABASE_URL (expected "${expectedProvider}")`, C.yellow);
+  if (schemaProvider !== expectedProvider) {
+    log(`  ⚠ Schema/provider mismatch: schema="${schemaProvider}", DATABASE_URL expects="${expectedProvider}"`, C.yellow);
 
-    // Auto-fix: prefer generating from template, fallback to patching
+    // Fix: prefer template regeneration, fallback to regex patch
     if (fs.existsSync(templatePath)) {
       const template = fs.readFileSync(templatePath, "utf-8");
       fs.writeFileSync(schemaPath, template.replace(/__PROVIDER__/g, expectedProvider));
-      log(`  Fixed: regenerated schema.prisma from template (provider: ${expectedProvider})`, C.green);
     } else {
       const fixed = schemaContent.replace(
         /(datasource\s+db\s*\{[^}]*provider\s*=\s*)"[^"]*"/,
         `$1"${expectedProvider}"`,
       );
       fs.writeFileSync(schemaPath, fixed);
-      log(`  Fixed: provider → "${expectedProvider}"`, C.green);
+    }
+
+    // Verify the fix actually worked
+    const verify = fs.readFileSync(schemaPath, "utf-8");
+    const verifyMatch = verify.match(/datasource\s+db\s*\{[^}]*provider\s*=\s*"([^"]*)"/);
+    if (verifyMatch?.[1] === expectedProvider) {
+      log(`  ✓ Fixed: schema.prisma provider → "${expectedProvider}"`, C.green);
+    } else {
+      log(`  ✗ FAILED to fix schema.prisma! Please edit prisma/schema.prisma manually.`, C.red);
+      log(`    Set provider = "${expectedProvider}" in the datasource db { } block.`, C.red);
+      process.exit(1);
+    }
+
+    // Regenerate Prisma Client to match new provider
+    log(`  Regenerating Prisma Client...`, C.cyan);
+    const genResult = spawnSync("npx", ["prisma", "generate"], {
+      cwd: ROOT,
+      stdio: "pipe",
+      timeout: 30_000,
+      shell: process.platform === "win32",
+    });
+    if (genResult.status !== 0) {
+      log(`  Prisma generate warning: ${genResult.stderr?.toString().split("\n")[0] || "unknown"}`, C.yellow);
     }
   }
+} else if (!expectedProvider && dbUrl) {
+  log(`  ⚠ Cannot determine provider from DATABASE_URL: ${dbUrl.slice(0, 30)}...`, C.yellow);
 }
 
 if (isSqlite) {
