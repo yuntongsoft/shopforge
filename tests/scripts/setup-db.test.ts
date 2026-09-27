@@ -92,8 +92,18 @@ describe("Setup: Installation initialization", () => {
     expect(dev).not.toMatch(/randomBytes/);
   });
 
-  it("postinstall only runs prisma generate", async () => {
+  it("postinstall is removed to avoid generating Prisma Client before .env exists", async () => {
     const pkg = JSON.parse(await readFile("package.json", "utf8"));
-    expect(pkg.scripts.postinstall).toBe("prisma generate");
+    // postinstall was removed — it ran prisma generate before .env existed,
+    // causing Client to be generated with wrong provider (sqlite default)
+    expect(pkg.scripts.postinstall).toBeUndefined();
+  });
+
+  it("dev.ts regenerates Prisma Client when schema changes (hash-based)", async () => {
+    const dev = await readFile("scripts/dev.ts", "utf8");
+    // dev.ts should use hash-based detection for schema changes
+    expect(dev).toMatch(/createHash/);
+    expect(dev).toMatch(/prisma.*generate/);
+    expect(dev).toMatch(/schema-hash/);
   });
 });
