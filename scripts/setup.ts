@@ -116,12 +116,38 @@ function choose(message: string, options: { key: string; label: string }[], defa
 function updateSchemaProvider(provider: string) {
   if (!fs.existsSync(SCHEMA_PATH)) return;
   let schema = fs.readFileSync(SCHEMA_PATH, "utf-8");
-  // Only replace provider inside datasource db { ... } block, not generator client
-  schema = schema.replace(
-    /(datasource\s+db\s*\{[^}]*provider\s*=\s*)"[^"]*"/,
-    `$1"${provider}"`,
-  );
+
+  // Strategy 1: Match inside datasource db { ... } block
+  const datasourceRegex = /(datasource\s+db\s*\{[^}]*provider\s*=\s*)"[^"]*"/;
+  if (datasourceRegex.test(schema)) {
+    schema = schema.replace(datasourceRegex, `$1"${provider}"`);
+  } else {
+    // Strategy 2: Fallback — find provider line after "datasource db"
+    // This handles edge cases where the block structure is unusual
+    const lines = schema.split("\n");
+    let inDatasource = false;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes("datasource") && lines[i].includes("db")) {
+        inDatasource = true;
+      }
+      if (inDatasource && lines[i].trim().startsWith("provider")) {
+        lines[i] = lines[i].replace(/provider\s*=\s*"[^"]*"/, `provider = "${provider}"`);
+        break;
+      }
+      if (inDatasource && lines[i].trim() === "}") {
+        break;
+      }
+    }
+    schema = lines.join("\n");
+  }
+
   fs.writeFileSync(SCHEMA_PATH, schema);
+
+  // Verify the change
+  const verify = fs.readFileSync(SCHEMA_PATH, "utf-8");
+  if (!verify.includes(`provider = "${provider}"`)) {
+    warn(`Failed to update schema.prisma provider to "${provider}" — please edit prisma/schema.prisma manually`);
+  }
 }
 
 function generateSecrets() {

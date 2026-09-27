@@ -119,6 +119,28 @@ step(2, 4, "Checking database...");
 const dbUrl = env.DATABASE_URL || "";
 const isSqlite = dbUrl.startsWith("file:");
 
+// P0: Verify schema.prisma provider matches DATABASE_URL
+const schemaPath = path.join(ROOT, "prisma", "schema.prisma");
+if (fs.existsSync(schemaPath)) {
+  const schemaContent = fs.readFileSync(schemaPath, "utf-8");
+  const providerMatch = schemaContent.match(/datasource\s+db\s*\{[^}]*provider\s*=\s*"([^"]*)"/);
+  const schemaProvider = providerMatch?.[1] || "";
+  const expectedProvider = isSqlite ? "sqlite" : dbUrl.startsWith("postgresql") || dbUrl.startsWith("postgres") ? "postgresql" : dbUrl.startsWith("mysql") ? "mysql" : "";
+
+  if (expectedProvider && schemaProvider && schemaProvider !== expectedProvider) {
+    log(`  ⚠ schema.prisma provider "${schemaProvider}" doesn't match DATABASE_URL (expected "${expectedProvider}")`, C.yellow);
+    log(`  Fixing schema.prisma automatically...`, C.yellow);
+
+    // Auto-fix: update provider in schema.prisma
+    const fixed = schemaContent.replace(
+      /(datasource\s+db\s*\{[^}]*provider\s*=\s*)"[^"]*"/,
+      `$1"${expectedProvider}"`,
+    );
+    fs.writeFileSync(schemaPath, fixed);
+    log(`  Fixed: provider → "${expectedProvider}"`, C.green);
+  }
+}
+
 if (isSqlite) {
   // For SQLite, check if the .db file exists
   const dbFileMatch = dbUrl.match(/^file:\.\/(.+)$/);
