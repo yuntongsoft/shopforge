@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsx scripts/build.ts",
     "postinstall": "prisma generate",
-    "setup": "node scripts/setup-db.cjs",
+    "setup": "tsx scripts/setup.ts",
     "db:push": "prisma db push --skip-generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",

@@ -15,8 +15,23 @@ import { createLogger } from "~/utils/logger";
 
 const logger = createLogger({ module: "retry" });
 
+// Errors that should NOT be retried — they are permanent and won't resolve on retry
+const NON_RETRYABLE_PATTERNS = [
+  "ACCESS_DENIED",
+  "not approved",
+  "Protected customer data",
+  "insufficient permissions",
+  "forbidden",
+];
+
+function isNonRetryable(error: Error): boolean {
+  const msg = error.message?.toLowerCase() || "";
+  return NON_RETRYABLE_PATTERNS.some((pattern) => msg.includes(pattern.toLowerCase()));
+}
+
 /**
- * Execute an async function with exponential backoff retry
+ * Execute an async function with exponential backoff retry.
+ * Automatically skips retry for permanent errors (ACCESS_DENIED, permission issues, etc.)
  */
 export async function withRetry<T>(
   fn: () => Promise<T>,
@@ -41,6 +56,15 @@ export async function withRetry<T>(
       return await fn();
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+
+      // Don't retry permanent errors (ACCESS_DENIED, permission issues, etc.)
+      if (isNonRetryable(lastError)) {
+        logger.error(
+          { label, attempt: attempt + 1, error: lastError.message },
+          `${label} failed with non-retryable error (no retry)`
+        );
+        throw lastError;
+      }
 
       if (attempt === maxRetries) {
         logger.error(

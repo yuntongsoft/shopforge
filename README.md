@@ -25,7 +25,7 @@ Battle-tested boilerplate with OAuth, Billing, Functions, GDPR compliance, and m
 - **Code Generator** — Define a Prisma model, run `npm run generate`, get a complete CRUD page
 - **Transactional Email** — Resend-powered email service with i18n support and dev-mode mock
 - **Structured Logging** — pino-based logger with trace ID support
-- **Retry with Backoff** — Exponential backoff utility for external service calls
+- **Retry with Backoff** — Exponential backoff utility with non-retryable error detection (ACCESS_DENIED, permission errors fail fast)
 - **Theme Extension** — Liquid App Block template with storefront rendering + admin config page
 - **Landing Page** — Next.js 14 marketing site in npm workspace (blog, SEO, OG image, pricing)
 - **Demo Isolation** — All demo code in `app/demo/` + `tests/demo/`, one command to remove
@@ -39,9 +39,9 @@ Battle-tested boilerplate with OAuth, Billing, Functions, GDPR compliance, and m
 
 ## Quick Start
 
-> **New to ShopForge?** Follow the step-by-step guide: [Getting Started](GETTING-STARTED.md) — covers Shopify Partner setup, API credentials, environment config, and first launch.
+> **New to ShopForge?** Follow the step-by-step guide: [Getting Started](GETTING-STARTED.md) — covers Shopify Partner setup, API credentials, and first launch.
 
-### Option A: Local Development (recommended)
+### The 3-Command Flow
 
 ```bash
 # 1. Clone
@@ -51,51 +51,68 @@ cd my-shopify-app
 # 2. Install dependencies
 npm install
 
-# 3. Create Shopify App in Partner Dashboard
-#    → Create version with App URL: https://example.com
-#    → Add scopes: read_discounts,write_discounts,read_orders,read_products,write_products
-#    → Add redirect URL: https://example.com/auth/callback
-#    → Release the version
-#    → Copy API Key + Secret from App settings
-
-# 4. Configure environment
-cp .env.example .env
-#    Edit .env: SHOPIFY_API_KEY, SHOPIFY_API_SECRET, DATABASE_URL, ENCRYPTION_KEY
-#    Edit shopify.app.toml: client_id = "your_api_key"
-
-# 5. Start
+# 3. Start — auto-setup on first run
 npm run dev
-#    Press P to open in browser
 ```
 
-### Option B: Docker
+That's it. `npm run dev` will:
+- **Auto-detect** missing `.env` → run interactive setup wizard
+- **Configure** SQLite database (zero config) or let you choose PostgreSQL/MySQL
+- **Generate** encryption keys automatically
+- **Create** database tables automatically
+- **Prompt** for Shopify API credentials (from Partner Dashboard)
+- **Launch** the dev server with Cloudflare tunnel
+
+### Prerequisites
+
+Before running, you need a Shopify App with API credentials:
+
+1. Go to [Shopify Partners](https://partners.shopify.com) → Apps → **Create app**
+2. Create a version with scopes: `read_discounts,write_discounts,read_orders,read_products,write_products`
+3. Release the version
+4. Copy **API Key** and **API Secret** from App settings
+
+The setup wizard will ask you to paste these credentials. You can also skip and fill them in `.env` later.
+
+### Manual Setup (optional)
 
 ```bash
-# 1. Clone + edit .env (same as above)
+# Interactive setup — configure database + credentials
+npm run setup
+
+# Quick mode — SQLite + skip Shopify credentials
+npm run setup -- --quick
+
+# Specify database non-interactively
+npm run setup -- --provider postgresql
+npm run setup -- --provider mysql
+```
+
+### Docker
+
+```bash
+# 1. Clone + edit .env (set DATABASE_URL for PostgreSQL)
 # 2. Start everything
 docker compose up -d
 ```
 
 ### Database Configuration
 
-ShopForge supports **PostgreSQL**, **MySQL**, and **SQLite** out of the box.
+ShopForge defaults to **SQLite** (zero config). Switch anytime:
 
 | Database | Best for | Setup |
 |----------|----------|-------|
-| **SQLite** | Development, prototyping | Zero config — just `file:./dev.db` |
-| **PostgreSQL** | Production (recommended) | `postgresql://user:pass@host:5432/db` |
-| **MySQL** | Teams familiar with MySQL | `mysql://user:pass@host:3306/db` |
+| **SQLite** | Development, prototyping | Zero config — default |
+| **PostgreSQL** | Production (recommended) | `npm run setup -- --provider postgresql` |
+| **MySQL** | Teams familiar with MySQL | `npm run setup -- --provider mysql` |
 
 **Switch database anytime:**
 
 ```bash
-# Delete .env and re-run setup
 rm .env          # macOS/Linux
 del .env         # Windows
 npm run setup    # re-configure database
 ```
-
-The setup script regenerates `prisma/schema.prisma` from the template (`schema.prisma.template`) and creates a fresh `.env` with the correct `DATABASE_URL` format.
 
 ### First Steps
 
@@ -187,9 +204,10 @@ shopforge/
 │   ├── build.ts            # Production build (compile Functions + Remix)
 │   ├── check.ts            # Cross-platform type check + test runner
 │   ├── clean-demo.ts       # Remove all demo code automatically
-│   ├── dev.ts              # Smart dev server (auto env, db, Functions)
+│   ├── dev.ts              # Smart dev server (auto-setup, db sync, Functions)
 │   ├── generate.ts         # CRUD page code generator
 │   ├── seed.ts             # Database seed with demo data
+│   ├── setup.ts            # Unified setup wizard (database + Shopify + secrets)
 │   ├── setup-functions.ts  # Copy Function templates to extensions/
 │   └── upgrade-db.ts       # Database upgrade CLI (legacy → current baseline)
 ├── templates/              # Function templates (Rust)
@@ -372,7 +390,8 @@ npx shopify app deploy
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Smart dev server (auto env, db sync, Function compile) |
+| `npm run dev` | Smart dev server (auto-setup, db sync, Function compile) |
+| `npm run setup` | Interactive setup wizard (database + Shopify credentials + secrets) |
 | `npm run build` | Production build (Functions + Remix) |
 | `npm start` | Start production server |
 | `npm run check` | Cross-platform type check + test |
@@ -457,7 +476,7 @@ vercel --prod
 
 - **Framework**: Remix 2.x + Vite 5
 - **UI**: Polaris 12 + App Bridge 4
-- **Database**: PostgreSQL + Prisma 5
+- **Database**: SQLite (dev) / PostgreSQL / MySQL + Prisma 5
 - **Server**: Express 4 (production)
 - **Functions**: Rust + Shopify Function SDK (WASM)
 - **Landing**: Next.js 14 + Tailwind CSS (npm workspace)

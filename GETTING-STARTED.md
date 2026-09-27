@@ -1,6 +1,6 @@
 # Getting Started — From Zero to Running App
 
-Complete walkthrough for developers. Estimated time: **15 minutes**.
+Complete walkthrough for developers. Estimated time: **10 minutes**.
 
 ## Prerequisites
 
@@ -22,143 +22,83 @@ cd my-shopify-app
 npm install
 ```
 
-This installs all dependencies for both the app and the landing page (npm workspace).
+This installs all dependencies and generates the Prisma client.
 
 ---
 
 ## Step 2: Create Shopify App
 
-### 2.1 Go to Partner Dashboard
-
 1. Log in to [Shopify Partners](https://partners.shopify.com)
-2. Navigate to **Apps** in the left sidebar
-3. Click **Create app**
-4. Enter app name (e.g. "My App")
-5. Select **Self-serve** as the distribution type (or as needed)
+2. Navigate to **Apps** → **Create app**
+3. Enter app name (e.g. "My App"), select distribution type
+4. Click **Create version** — fill in:
+   - **App URL**: `https://example.com` (placeholder, auto-updated by CLI)
+   - **Redirect URLs**: `https://example.com/auth/callback` (also placeholder)
+5. Configure **API access** (scopes):
+   ```
+   read_discounts, write_discounts, read_orders, read_products, write_products
+   ```
+6. Click **Release** to activate the version
 
-### 2.2 Create App Version
-
-After creating the app, you'll land on the app overview page. You need to create a version before the app can run:
-
-1. Click **Create version** (top-right area)
-2. Fill in the following fields:
-
-| Field | Development Value | Notes |
-|-------|-------------------|-------|
-| **App URL** | `https://example.com` | Placeholder — Shopify CLI auto-replaces with tunnel URL during `npm run dev` |
-| **Allowed redirection URL(s)** | `https://example.com/auth/callback` | Also a placeholder — auto-updated by CLI |
-
-3. Click **Save** (or **Create version**)
-
-### 2.3 Configure API Access (Scopes)
-
-In the same version creation page, find **API access** (or **Configuration → API access**):
-
-Add the following scopes (comma-separated):
-
-```
-read_discounts, write_discounts, read_orders, read_products, write_products
-```
-
-> **Note:** These are the default scopes pre-configured in `shopify.app.toml`. If your app needs additional scopes (e.g. `read_customers`), add them in both the Partner Dashboard and `shopify.app.toml`.
-
-### 2.4 Release the Version
-
-After filling in all fields, click **Release** (or **Save and release**) to activate this version.
-
-> **Why release?** Shopify requires at least one released version before the app can be installed or accessed via dev preview. The URLs will be automatically updated by Shopify CLI when you run `npm run dev`.
+> **Why release?** Shopify requires at least one released version before the app can run in dev preview. URLs are auto-updated by CLI later.
 
 ---
 
-## Step 3: Get API Credentials
-
-1. In your app's Partner Dashboard, go to **Configuration → App settings** (or click **App settings** in the left sidebar under your app)
-2. Find the **API credentials** section
-3. Copy these two values:
-
-| Credential | Location |
-|------------|----------|
-| **API Key** (Client ID) | App settings → API credentials |
-| **API Secret Key** (Client Secret) | App settings → API credentials → Click **Show** |
-
-Keep these ready for the next step.
-
----
-
-## Step 4: Configure Environment
-
-### 4.1 Create .env file
+## Step 3: Run Setup
 
 ```bash
-cp .env.example .env
+npm run setup
 ```
 
-### 4.2 Edit .env
+The setup wizard will guide you through:
 
-Open `.env` and fill in the **4 required values**:
+1. **Database** — defaults to SQLite (zero config). Press Enter to accept.
+2. **Shopify credentials** — paste your API Key and API Secret from Step 2.
+3. **Database init** — tables are created automatically.
+
+That's it. The `.env` file, encryption keys, and database are all configured for you.
+
+### Quick mode (skip Shopify credentials)
 
 ```bash
-# 1. Paste from Step 3
-SHOPIFY_API_KEY=your_api_key_from_partner_dashboard
-SHOPIFY_API_SECRET=your_api_secret_from_partner_dashboard
-
-# 2. Database — pick one:
-#    SQLite (easiest, recommended for dev):
-DATABASE_URL=file:./dev.db
-#    PostgreSQL:
-#    DATABASE_URL=postgresql://user:password@localhost:5432/shopforge
-#    MySQL:
-#    DATABASE_URL=mysql://user:password@localhost:3306/shopforge
-
-# 3. Encryption key — generate with:
-#    node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-ENCRYPTION_KEY=paste_generated_hex_string_here
-
-# 4. CSRF secret — generate with:
-#    node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-CSRF_SECRET=paste_another_hex_string_here
+npm run setup -- --quick
 ```
 
-### 4.3 Edit shopify.app.toml
+This sets up SQLite + auto-generates security keys. You can fill in Shopify credentials in `.env` later.
 
-Open `shopify.app.toml` and update `client_id` with your API Key:
+### Switch to PostgreSQL/MySQL
 
-```toml
-client_id = "your_api_key_here"    # ← Replace with your actual API Key (Client ID)
-name = "Your App Name"              # ← Change to your app name
-application_url = "https://example.com"
-embedded = true
-
-[auth]
-redirect_urls = [ "https://example.com/auth/callback" ]
+```bash
+npm run setup -- --provider postgresql
+npm run setup -- --provider mysql
 ```
-
-> **Tip:** `application_url` and `redirect_urls` use `https://example.com` as placeholders. Shopify CLI will automatically update these to the tunnel URL when you run `npm run dev`. You don't need to manually change them for development.
 
 ---
 
-## Step 5: Start the App
+## Step 4: Start the App
 
 ```bash
 npm run dev
 ```
 
 The dev server will:
-1. Validate your `.env` configuration
-2. Sync the database schema (auto-create tables if needed)
+1. Check your configuration (auto-runs setup if `.env` is missing)
+2. Sync the database schema
 3. Compile any Shopify Functions (if present in `extensions/`)
 4. Start the Remix dev server with a Cloudflare tunnel
+
+> **First run?** If `.env` doesn't exist, `npm run dev` will automatically run setup for you. No need to run `npm run setup` separately.
 
 Wait until you see output like:
 
 ```
-✓ App already configured. Starting dev server...
+  App already configured. Starting dev server...
   Access your app from Shopify Admin → Apps menu.
 ```
 
 ---
 
-## Step 6: Open in Browser
+## Step 5: Open in Browser
 
 While the dev server is running, press the **P** key in the terminal.
 
@@ -182,13 +122,13 @@ Your `application_url` in Partner Dashboard hasn't been updated by CLI yet. Make
 
 Session token expired. Refresh the browser. If it persists:
 1. Stop the dev server (Ctrl+C)
-2. Delete the database: `rm dev.db` (or `DROP DATABASE` for PostgreSQL/MySQL)
+2. Delete the database: `rm prisma/dev.db` (or `DROP DATABASE` for PostgreSQL/MySQL)
 3. Run `npm run dev` again
 4. Press **P** to reopen
 
 ### "App not installed" error
 
-You need to release at least one version in Partner Dashboard (Step 2.4). The dev preview requires a released version.
+You need to release at least one version in Partner Dashboard (Step 2). The dev preview requires a released version.
 
 ### Port already in use
 
@@ -202,6 +142,12 @@ npm run dev
 ### Database connection failed
 
 Check your `DATABASE_URL` in `.env`. For SQLite, make sure the path is writable. For PostgreSQL/MySQL, verify the host, port, username, and password.
+
+To reconfigure database:
+```bash
+rm .env
+npm run setup
+```
 
 ---
 
