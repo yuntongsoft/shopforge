@@ -10,9 +10,10 @@
 #   - Production build
 #   - Migration validation (prisma validate + SQL file presence)
 #
-# Note: `prisma migrate validate` (drift detection) requires a live PostgreSQL
+# Note: `prisma migrate validate` (drift detection) requires a live database
 # connection and is NOT run here. It should be executed before deploying or in
-# a separate integration workflow with a PG service container.
+# a separate integration workflow with a PostgreSQL/MySQL service container.
+# CI uses SQLite (file:./ci.db) to match the default schema.prisma provider.
 #
 # Non-blocking (informational):
 #   - Docker build
@@ -40,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      DATABASE_URL: file:./ci.db
 
     steps:
       - name: Checkout code
@@ -80,7 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      DATABASE_URL: file:./ci.db
 
     steps:
       - name: Checkout code
@@ -132,7 +133,7 @@ jobs:
     timeout-minutes: 10
     needs: quality
     env:
-      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      DATABASE_URL: file:./ci.db
 
     steps:
       - name: Checkout code
