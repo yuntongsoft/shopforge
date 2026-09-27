@@ -101,7 +101,7 @@ function choose(message: string, options: { key: string; label: string }[], defa
       const marker = i === defaultIdx ? ` ${C.dim}(default)${C.reset}` : "";
       output += `    ${C.cyan}${i + 1}${C.reset}) ${opt.label}${marker}\n`;
     });
-    output += `\n  Enter choice [${C.cyan}${defaultIdx + 1}${C.reset}]: `;
+    output += `\n  Enter your choice (${options.map((_, i) => i + 1).join("/")}) [${C.cyan}${defaultIdx + 1}${C.reset}]: `;
     rl.question(output, (answer) => {
       rl.close();
       const idx = parseInt(answer || String(defaultIdx + 1), 10) - 1;
