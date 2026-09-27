@@ -114,39 +114,47 @@ function choose(message: string, options: { key: string; label: string }[], defa
 // ─── Phase 1: Database ──────────────────────────────────────────────────────
 
 function updateSchemaProvider(provider: string) {
-  if (!fs.existsSync(SCHEMA_PATH)) return;
-  let schema = fs.readFileSync(SCHEMA_PATH, "utf-8");
+  // Strategy: Generate schema.prisma from template — 100% reliable, no regex.
+  const templatePath = path.join(ROOT, "prisma", "schema.prisma.template");
 
-  // Strategy 1: Match inside datasource db { ... } block
-  const datasourceRegex = /(datasource\s+db\s*\{[^}]*provider\s*=\s*)"[^"]*"/;
-  if (datasourceRegex.test(schema)) {
-    schema = schema.replace(datasourceRegex, `$1"${provider}"`);
-  } else {
-    // Strategy 2: Fallback — find provider line after "datasource db"
-    // This handles edge cases where the block structure is unusual
-    const lines = schema.split("\n");
-    let inDatasource = false;
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes("datasource") && lines[i].includes("db")) {
-        inDatasource = true;
-      }
-      if (inDatasource && lines[i].trim().startsWith("provider")) {
-        lines[i] = lines[i].replace(/provider\s*=\s*"[^"]*"/, `provider = "${provider}"`);
-        break;
-      }
-      if (inDatasource && lines[i].trim() === "}") {
-        break;
-      }
-    }
-    schema = lines.join("\n");
+  if (fs.existsSync(templatePath)) {
+    const template = fs.readFileSync(templatePath, "utf-8");
+    const schema = template.replace(/__PROVIDER__/g, provider);
+    fs.writeFileSync(SCHEMA_PATH, schema);
+    ok(`schema.prisma generated from template (provider: ${provider})`);
+    return;
   }
 
-  fs.writeFileSync(SCHEMA_PATH, schema);
+  // Fallback: template missing — try to patch existing schema.prisma
+  if (!fs.existsSync(SCHEMA_PATH)) {
+    warn("Neither schema.prisma.template nor schema.prisma found!");
+    return;
+  }
 
-  // Verify the change
-  const verify = fs.readFileSync(SCHEMA_PATH, "utf-8");
-  if (!verify.includes(`provider = "${provider}"`)) {
-    warn(`Failed to update schema.prisma provider to "${provider}" — please edit prisma/schema.prisma manually`);
+  warn("schema.prisma.template not found — patching existing schema.prisma");
+  const schema = fs.readFileSync(SCHEMA_PATH, "utf-8");
+  const lines = schema.split(/\r?\n/);
+  let inDatasource = false;
+  let patched = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes("datasource") && lines[i].includes("db")) {
+      inDatasource = true;
+    }
+    if (inDatasource && lines[i].trim().startsWith("provider")) {
+      lines[i] = lines[i].replace(/provider\s*=\s*"[^"]*"/, `provider = "${provider}"`);
+      patched = true;
+      break;
+    }
+    if (inDatasource && lines[i].trim() === "}") {
+      break;
+    }
+  }
+
+  if (patched) {
+    fs.writeFileSync(SCHEMA_PATH, lines.join("\n"));
+  } else {
+    warn(`Failed to update provider — please edit prisma/schema.prisma manually`);
   }
 }
 
