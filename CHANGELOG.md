@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Webhook Resilience Engine**: Production-grade async webhook processing infrastructure
+  - **Async Job Queue** (`webhook-queue.ts`): CAS-based atomic claim, heartbeat renewal, lease recovery, dead-letter after 3 attempts, exponential backoff (30s base), concurrency guard
+  - **Outbound Webhook Delivery** (`webhook-outbound.ts`): SSRF protection (private IP blocking, DNS pinning, port whitelist), HMAC-SHA256 signing, 5s timeout with retry
+  - **Webhook Management API** (`api.webhooks.tsx`): CRUD for merchant webhook configs, secret returned only at creation
+  - **Cron Endpoint** (`api.cron.tsx`): Crash recovery, lease reclaim, dead-letter inspection, queue stats
+  - **WebhookJob Prisma Model**: Status lifecycle tracking (pending → processing → completed/failed), attempts counter, lease management
+  - **29 Tests**: Comprehensive coverage across queue (9), outbound (10), and registry (10)
 - **Baseline Migration**: Versioned `20260926000000_baseline` covering all 7 tables (shops, sessions, orders, shop_functions, operation_leases, webhook_executions, privacy_requests) with correct snake_case naming, indexes, and FK constraints
 - **Database Upgrade Tool**: `scripts/upgrade-db.ts` — detects legacy PascalCase databases and plans safe migration to current baseline (dry-run by default, idempotent, no data loss)
 - **CI Migration Validation**: GitHub Actions now validates Prisma schema and migration file integrity as a blocking gate
@@ -18,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Empty State Images**: Order and discount lists show empty-state.png when no data
 
 ### Changed
+- **WebhookRegistry Upgrade**: Support both sync and async handlers; async handlers enqueued for background processing via job queue; N² execution fix (dispatch enqueues once per topic, dispatchHandlers runs all async handlers); APP_UNINSTALLED marked async to avoid Shopify 5s webhook timeout
 - **Rust Function Templates**: Upgraded from shopify_function SDK 0.8 to 2.2.0 with `#[typegen]` macro, `schema.graphql`, `wasm32-unknown-unknown` target, and new output type conventions
 - **Clean Demo Refactor**: Rewritten as declarative change manifest with pure transform functions, CRLF normalization, and dry-run/apply modes
 - **CI Gates**: Typecheck, lint, and tests are now blocking (removed `continue-on-error: true`); Summary job correctly fails on any upstream failure
@@ -30,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Setup Functions**: Updated Rust target from `wasm32-wasi` to `wasm32-unknown-unknown`, removed `cargo-wasi` references
 
 ### Security
+- **Outbound Webhook SSRF Protection**: Private IP blocking (IPv4/IPv6), DNS pinning to prevent rebinding attacks, port whitelist (80/443/8080/8443/3000/5000), protocol whitelist (http/https only)
+- **IPv6-Mapped IPv4 SSRF Bypass Fix**: `isPrivateIp()` now detects `::ffff:192.168.1.1` style addresses and validates the embedded IPv4 portion
+- **HMAC-SHA256 Webhook Signing**: Outbound webhooks signed with per-config secrets for payload verification by recipients
 - `PageErrorBoundary` now distinguishes user-facing errors (Response) from internal errors (TypeError/SQL), only exposing safe messages to clients
 
 ---
