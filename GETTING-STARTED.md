@@ -112,6 +112,34 @@ This opens the app in your browser via the Shopify dev preview. You should see:
 
 ---
 
+## Step 6: Configure Background Jobs (Production)
+
+The webhook resilience engine includes an async job queue that processes heavy webhook handlers in the background. In development, jobs are consumed instantly via `setImmediate`. In production, you need a cron job to drain the queue as a crash recovery fallback.
+
+### Set up the cron endpoint
+
+1. Add `CRON_SECRET` to your `.env` file (a random string for authentication):
+
+```bash
+# Generate a random secret
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+2. Configure your hosting platform to call this endpoint every 5 minutes:
+
+```
+GET https://your-app.com/api/cron?secret=YOUR_CRON_SECRET
+```
+
+**What it does:**
+- Consumes pending webhook jobs (crash recovery for jobs that weren't picked up by `setImmediate`)
+- Recovers stuck jobs whose processing lease expired (5 min timeout)
+- Cleans up completed/failed jobs older than 7 days
+
+> **Local development?** The cron endpoint is not needed — `setImmediate` handles instant consumption. You can test it manually: `curl "http://localhost:3000/api/cron?secret=YOUR_CRON_SECRET"`.
+
+---
+
 ## Troubleshooting
 
 ### "Example Domain" page instead of app

@@ -2,12 +2,12 @@
  * File: routes/health.tsx
  * Author: yuntongsoft
  * Date: 2026/09/03
- * Purpose: Health check endpoint — DB connectivity, env config, encryption, and shop stats.
- *          Use ?detail=1 for full diagnostics (env issues, shop count).
+ * Purpose: Health check endpoint — DB connectivity, env config, encryption, shop stats,
+ *          and webhook queue status. Use ?detail=1 for full diagnostics.
  *
  * Response:
  *   GET /health          → { status, version, timestamp, checks: { database } }
- *   GET /health?detail=1 → adds { env: [...], shops: { total }, encryption: "ok"|"fail" }
+ *   GET /health?detail=1 → adds { env: [...], shops: { total }, encryption, webhookQueue }
  */
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
@@ -15,6 +15,7 @@ import crypto from "crypto";
 import prisma from "~/db.server";
 import { getEnvIssues } from "~/utils/env-validator";
 import { encrypt } from "~/utils/encryption";
+import { getQueueStats } from "~/services/webhook-queue";
 
 /**
  * Timing-safe string comparison — prevents timing attacks on secret comparison.
@@ -86,12 +87,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     shopCount = -1; // -1 = error
   }
 
+  // 5. Webhook queue status
+  let webhookQueue = { pending: 0, processing: 0, completed: 0, failed: 0 };
+  try {
+    webhookQueue = await getQueueStats();
+  } catch {
+    webhookQueue = { pending: -1, processing: -1, completed: -1, failed: -1 };
+  }
+
   return json(
     {
       ...baseResult,
       env: envIssues.map((i) => ({ variable: i.variable, severity: i.severity, message: i.message })),
       encryption: encryptionStatus,
       shops: { total: shopCount },
+      webhookQueue,
     },
     { status: checks.database === "ok" && encryptionStatus === "ok" ? 200 : 503 }
   );

@@ -2,7 +2,7 @@
 
 > **Author:** yuntongsoft  
 > **Created:** 2026/08/01  
-> **Last Updated:** 2026/09/17
+> **Last Updated:** 2026/10/07
 
 Method-level documentation for all service modules. Each entry includes signature, parameters, return type, and usage example.
 
@@ -12,7 +12,9 @@ Method-level documentation for all service modules. Each entry includes signatur
 
 - [shopifyAdmin() — Shopify Admin API](#shopifyadmin--shopify-admin-api)
 - [billingService — Billing API](#billingservice--billing-api)
-- [webhookRegistry — Webhook Management](#webhookregistry--webhook-management)
+- [webhookRegistry — Webhook Handler Registry](#webhookregistry--webhook-handler-registry)
+- [webhookQueue — Async Job Queue](#webhookqueue--async-job-queue)
+- [webhookOutbound — Merchant Webhook Delivery](#webhookoutbound--merchant-webhook-delivery)
 - [email — Transactional Email](#email--transactional-email)
 
 ---
@@ -416,10 +418,10 @@ Handle subscription cancellation/decline/expire. Downgrades shop to free plan.
 
 ---
 
-## webhookRegistry — Webhook Management
+## webhookRegistry — Webhook Handler Registry
 
 **File:** `app/services/webhook-registry.ts`
-**Purpose:** Centralized webhook handler registry. Developers register handlers; the framework handles delivery, retry, and HMAC verification.
+**Purpose:** Centralized webhook handler registry. Developers register handlers for sync or async execution; the framework handles HMAC verification, retry, and queue-based background processing.
 
 ```typescript
 import { webhookRegistry } from "~/services/webhook-registry";
@@ -427,33 +429,59 @@ import { webhookRegistry } from "~/services/webhook-registry";
 
 ### Methods
 
-#### `webhookRegistry.on(topic, handler)`
+#### `webhookRegistry.on(topic, handler, options?)`
 
 Register a handler for a webhook topic. Multiple handlers per topic are supported (called in registration order).
 
 | Param | Type | Description |
 |-------|------|-------------|
 | `topic` | `WebhookTopic` | e.g. `"ORDERS_CREATE"`, `"APP_UNINSTALLED"` |
-| `handler` | `WebhookHandler` | `(shop: string, payload: unknown) => void \| Promise<void>` |
+| `handler` | `WebhookHandler` | `(shop: string, payload: unknown, webhookId?: string) => void \| Promise<void>` |
+| `options` | `RegisterOptions` | `{ async?: boolean }` — default `false` (sync) |
+
+**Sync handler (default):** Executed inline during `dispatch()` with retry (max 2 retries, 500ms → 2s exponential backoff). Use for lightweight operations that complete within Shopify's ~5s webhook timeout.
+
+**Async handler (`{ async: true }`):** Job is persisted to the `WebhookJob` table and processed by the background queue. Use for handlers that make Shopify API calls, perform batch DB operations, or call external services.
 
 ```typescript
-webhookRegistry.on("ORDERS_CREATE", async (shop, payload) => {
-  const order = payload as { name: string };
-  console.log(`New order: ${order.name} from ${shop}`);
+// Sync — lightweight cache update
+webhookRegistry.on("ORDERS_CREATE", async (shop, payload, webhookId) => {
+  await updateOrderCache(shop, payload);
 });
+
+// Async — heavy processing that may exceed 5s
+webhookRegistry.on("PRODUCTS_UPDATE", async (shop, payload) => {
+  await syncFullCatalog(shop, payload);
+}, { async: true });
 ```
 
-#### `webhookRegistry.dispatch(topic, shop, payload)`
+#### `webhookRegistry.dispatch(topic, shop, payload, webhookId?)`
 
-Dispatch a webhook to all registered handlers. Called by `routes/webhooks.tsx`. Includes retry with exponential backoff (max 2 retries, 500ms → 2s).
+Dispatch a webhook to all registered handlers. Called by `routes/webhooks.tsx`. Sync handlers execute inline with retry; async handlers enqueue via `webhook-queue`.
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `topic` | `string` | Webhook topic (SCREAMING_SNAKE_CASE) |
+| `shop` | `string` | Shop domain |
+| `payload` | `unknown` | Webhook payload |
+| `webhookId` | `string` | X-Shopify-Webhook-Id for idempotent dedup (optional) |
+
+**Returns:** `Promise<boolean>` — `true` if at least one handler was found.
+
+#### `webhookRegistry.dispatchHandlers(topic, shop, payload, webhookId?)`
+
+Execute handlers directly — no enqueue, no retry wrapper. Called by the webhook queue consumer after claiming a job; the queue handles its own retry/dead-letter lifecycle.
+
+> **Internal:** Used by `webhook-queue.ts` — not part of the public developer API.
 
 | Param | Type | Description |
 |-------|------|-------------|
 | `topic` | `string` | Webhook topic |
 | `shop` | `string` | Shop domain |
 | `payload` | `unknown` | Webhook payload |
+| `webhookId` | `string` | Webhook ID (optional) |
 
-**Returns:** `Promise<boolean>` — `true` if at least one handler was found.
+**Returns:** `Promise<void>`
 
 #### `webhookRegistry.getRegisteredTopics()`
 
@@ -465,11 +493,195 @@ Get all registered topics. Used by `shopify.server.ts` to auto-configure webhook
 
 | Topic | Behavior |
 |-------|----------|
-| `APP_UNINSTALLED` | Soft-delete shop (`isDeleted: true`) |
-| `APP_SUBSCRIPTIONS_UPDATE` | Activate/deactivate billing plan |
-| `CUSTOMERS_DATA_REQUEST` | Log (GDPR compliance acknowledgment) |
-| `CUSTOMERS_REDACT` | Log (GDPR compliance acknowledgment) |
-| `SHOP_REDACT` | Hard-delete all shop data in transaction |
+| `APP_UNINSTALLED` | Delete OAuth sessions, soft-delete shop, reset subscription state |
+| `APP_SUBSCRIPTIONS_UPDATE` | Activate/deactivate billing plan via `billingService` |
+| `CUSTOMERS_DATA_REQUEST` | GDPR acknowledgment (no customer PII stored) |
+| `CUSTOMERS_REDACT` | GDPR acknowledgment (no customer PII stored) |
+| `SHOP_REDACT` | Hard-delete all shop data in transaction (GDPR legal requirement) |
+
+---
+
+## webhookQueue — Async Job Queue
+
+**File:** `app/services/webhook-queue.ts`
+**Purpose:** Resilient background processing for webhook handlers that may exceed Shopify's ~5s response timeout. Provides CAS claim, lease recovery, heartbeat, dead-letter, and exponential backoff retry.
+
+```typescript
+import {
+  enqueueWebhook,
+  consumeWebhookBatch,
+  consumeWebhookJobs,
+  recoverWebhookJobs,
+  cleanupWebhookJobs,
+  getQueueStats,
+  WEBHOOK_LEASE_MS,
+  WEBHOOK_HEARTBEAT_MS,
+} from "~/services/webhook-queue";
+```
+
+### Constants
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `WEBHOOK_LEASE_MS` | `300000` (5 min) | Processing lease — jobs not completed within this window can be reclaimed |
+| `WEBHOOK_HEARTBEAT_MS` | `60000` (1 min) | Heartbeat interval — renews all outstanding jobs |
+
+Internal constants (not exported): `MAX_ATTEMPTS = 3`, `BATCH_LIMIT = 20`, `BACKOFF_BASE_MS = 30000`, `RECOVER_LIMIT = 50`.
+
+### Lifecycle
+
+```
+1. Route receives webhook → verify HMAC → enqueueWebhook() → return 200
+2. setImmediate triggers consumeWebhookBatch() (low-latency normal path)
+3. Cron endpoint (/api/cron) drains backlog (crash recovery fallback)
+4. CAS atomic claim: pending → processing (generation-guarded via attempts)
+5. Failed jobs retry up to MAX_ATTEMPTS with exponential backoff, then dead-letter
+```
+
+### Methods
+
+#### `enqueueWebhook(topic, shopDomain, payload, webhookId?)`
+
+Persist a webhook job and trigger instant consumption.
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `topic` | `string` | Shopify webhook topic (SCREAMING_SNAKE_CASE) |
+| `shopDomain` | `string` | Shop domain (e.g. `"mystore.myshopify.com"`) |
+| `payload` | `unknown` | Webhook payload (JSON.stringify'd for storage) |
+| `webhookId` | `string` | X-Shopify-Webhook-Id for idempotent dedup (optional) |
+
+**Returns:** `Promise<void>`
+
+**Idempotency:** The `@@unique([topic, shopDomain, webhookId])` constraint catches duplicate events. P2002 errors are silently ignored.
+
+**Fallback:** If enqueue itself fails (DB down), falls back to synchronous `dispatchHandlers()` so business logic is not lost.
+
+#### `consumeWebhookBatch(limit?)`
+
+Consume a batch of pending webhook jobs with CAS claim, heartbeat, and lease guard.
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `limit` | `number` | `20` | Batch size (1–200) |
+
+**Returns:** `Promise<{ completed: number; failed: number; requeued: number; leaseLost: number }>`
+
+**Processing flow per job:**
+1. CAS claim: `pending → processing` (atomic, generation-guarded via `attempts`)
+2. Pre-dispatch lease check: confirm still owned before executing
+3. Dispatch to `webhookRegistry.dispatchHandlers()`
+4. On success: mark `completed` (with lease guard)
+5. On failure: `pending` + exponential backoff (`30s * 2^(N-1)`) or `failed` (dead-letter after 3 attempts)
+
+**Heartbeat:** All outstanding jobs are renewed every `WEBHOOK_HEARTBEAT_MS` to prevent lease recovery from reclaiming them during processing.
+
+#### `consumeWebhookJobs(limit?)`
+
+Convenience wrapper — returns completed count only.
+
+**Returns:** `Promise<number>`
+
+#### `recoverWebhookJobs()`
+
+Reclaim processing jobs whose lease has expired (crash/timeout recovery). Jobs that haven't exceeded `MAX_ATTEMPTS` are reset to `pending`; others are marked `failed`.
+
+**Returns:** `Promise<{ requeued: number; failed: number }>`
+
+#### `cleanupWebhookJobs()`
+
+Delete completed/failed jobs older than 7 days to prevent unbounded table growth. Recommended: call from daily cron.
+
+**Returns:** `Promise<number>` — count of deleted records.
+
+#### `getQueueStats()`
+
+Get current queue status counts — used by health check endpoint.
+
+**Returns:** `Promise<{ pending: number; processing: number; completed: number; failed: number }>`
+
+---
+
+## webhookOutbound — Merchant Webhook Delivery
+
+**File:** `app/services/webhook-outbound.ts`
+**Purpose:** Outbound webhook delivery — sends event notifications to merchant-configured URLs with SSRF protection and HMAC-SHA256 signing.
+
+```typescript
+import { emitWebhook, generateWebhookSecret } from "~/services/webhook-outbound";
+import type { WebhookEvent } from "~/services/webhook-outbound";
+```
+
+### WebhookEvent Type
+
+```typescript
+type WebhookEvent =
+  | "rule.created"
+  | "rule.updated"
+  | "rule.deleted"
+  | "rule.triggered"
+  | "ab_test.complete"
+  | "quota.warning";
+```
+
+Add new event types as your app grows. The `events` field in `WebhookConfig` stores a JSON array of these strings.
+
+### Methods
+
+#### `emitWebhook(shopId, event, payload)`
+
+Send a webhook event to all matching active configurations for a shop.
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `shopId` | `string` | Shop ID (to look up `WebhookConfig` records) |
+| `event` | `WebhookEvent` | Event type (must match config's subscribed events) |
+| `payload` | `Record<string, unknown>` | Event data (JSON.stringify'd in request body) |
+
+**Returns:** `Promise<void>`
+
+**Delivery flow per matching config:**
+1. Validate URL (SSRF protection — blocks private IPs, DNS rebinding, non-whitelisted ports)
+2. Sign payload with HMAC-SHA256 using the config's secret
+3. POST with retry (exponential backoff, max 2 retries, 5s timeout)
+4. Log success/failure with delivery ID for tracing
+
+**Headers sent to recipient:**
+
+| Header | Description |
+|--------|-------------|
+| `X-Webhook-Signature` | `sha256=<hex>` — HMAC-SHA256 of request body |
+| `X-Webhook-Event` | Event type string |
+| `X-Webhook-Delivery` | Unique delivery ID (UUID) for dedup/tracing |
+
+```typescript
+await emitWebhook(shopId, "rule.created", { ruleId: "123", name: "Buy 2 Get 1" });
+```
+
+#### `generateWebhookSecret()`
+
+Generate a cryptographically secure webhook signing secret (64-char hex, 32 random bytes).
+
+**Returns:** `string`
+
+```typescript
+const secret = generateWebhookSecret();
+await prisma.webhookConfig.create({
+  data: { shopId, url: "https://example.com/webhook", secret, events: '["rule.created"]' },
+});
+```
+
+### SSRF Protection
+
+The `validateWebhookUrl()` function (internal) performs 5 layers of defense:
+
+1. **URL format** — must be valid URL
+2. **Protocol** — `http:` or `https:` only
+3. **Port whitelist** — 80, 443, 8080, 8443, 3000, 5000
+4. **Hostname** — rejects `localhost`, `.local`, `.internal`, literal private IPs
+5. **DNS resolution** — resolves hostname and validates all returned addresses against `isPrivateIp()` (prevents DNS rebinding)
+
+Private IP ranges covered: `10.0.0.0/8`, `127.0.0.0/8`, `0.0.0.0/8`, `169.254.0.0/16`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` (CGNAT), and IPv6 loopback/ULA/link-local.
 
 ---
 

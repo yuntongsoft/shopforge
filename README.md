@@ -13,7 +13,7 @@ Battle-tested boilerplate with OAuth, Billing, Functions, GDPR compliance, and m
 - **OAuth + Session** — Full Shopify OAuth flow with AES-256-GCM token encryption, auto token refresh, and Prisma session storage
 - **Three-Tier Billing** — Free / Pro / Business plans via Shopify Billing API with working upgrade flow
 - **Discount Rule Engine** — Create discounts with pure business parameters, no Function IDs or metafields
-- **Webhook Registry** — One-line handler registration: `webhookRegistry.on("TOPIC", handler)`
+- **Webhook Resilience Engine** — Full lifecycle: async queue with CAS claim, idempotent dedup, lease recovery, heartbeat, dead-letter, and SSRF-protected outbound webhooks with HMAC-SHA256 signing
 - **Function Pipeline** — `npm run functions:setup` scaffolds from templates → `shopify app deploy` end-to-end
 - **Shopify Admin API** — High-level methods hiding all GraphQL complexity
 - **GDPR Compliance** — Customer data request, redact, and shop redact webhook handlers
@@ -152,6 +152,8 @@ shopforge/
 │   │   ├── auth.callback.tsx   # OAuth callback
 │   │   ├── auth.login.tsx      # Bounce redirect for embedded app auth
 │   │   ├── health.tsx          # Health check endpoint
+│   │   ├── api.cron.tsx        # Cron endpoint (webhook queue consumer + cleanup)
+│   │   ├── api.webhooks.tsx    # Outbound webhook config CRUD API
 │   │   ├── privacy-policy.tsx  # Public privacy policy
 │   │   ├── terms.tsx           # Public terms of service
 │   │   └── webhooks.tsx        # Webhook handler (pure forwarder)
@@ -159,7 +161,9 @@ shopforge/
 │   │   ├── billing.service.ts  # Subscription billing (Free/Pro/Business)
 │   │   ├── email.ts            # Transactional email (Resend)
 │   │   ├── shopify-admin.ts    # High-level API client (hides GraphQL)
-│   │   └── webhook-registry.ts # Webhook handler registry + built-in handlers
+│   │   ├── webhook-registry.ts # Webhook handler registry + sync/async dispatch
+│   │   ├── webhook-queue.ts    # Async job queue (CAS claim, lease recovery, heartbeat)
+│   │   └── webhook-outbound.ts # Outbound webhooks (SSRF protection, HMAC signing)
 │   ├── utils/              # Shared utilities
 │   │   ├── api-response.ts     # Unified API response format (apiError/apiSuccess/safeError)
 │   │   ├── app-bridge.client.ts # SSR-safe access to window.shopify (App Bridge)
@@ -190,7 +194,7 @@ shopforge/
 │   ├── content/blog/       # Markdown blog posts
 │   └── lib/blog.ts         # Markdown parser
 ├── prisma/
-│   ├── schema.prisma       # Database schema (Shop, Session, Order, ShopFunction, OperationLease, WebhookExecution, PrivacyRequest)
+│   ├── schema.prisma       # Database schema (Shop, Session, Order, ShopFunction, WebhookJob, WebhookConfig, PrivacyRequest)
 │   └── migrations/         # Versioned Prisma migrations (baseline + upgrade tool)
 ├── scripts/
 │   ├── _internal/          # Internal tools (developers don't touch these)
@@ -277,19 +281,64 @@ await engine.createDiscount({
 
 Supported types: `order-discount`, `free-shipping`, `volume-discount`, `bogo`.
 
-### Webhook Registry (`services/webhook-registry.ts`)
+### Webhook Resilience Engine
 
-Register handlers in one line — webhooks are auto-configured from the registry:
+Three modules work together to handle the full webhook lifecycle — from Shopify inbound delivery to your app's outbound notifications.
+
+#### Inbound: Registry + Async Queue (`services/webhook-registry.ts` + `services/webhook-queue.ts`)
+
+Register handlers in one line — sync for lightweight ops, async for heavy processing:
 
 ```typescript
+import { webhookRegistry } from "~/services/webhook-registry";
+
+// Synchronous handler (default) — runs inline during webhook dispatch
 webhookRegistry.on("ORDERS_CREATE", async (shop, payload) => {
-  // Handle new order
+  await updateOrderCache(shop, payload);
 });
+
+// Asynchronous handler — enqueued for background processing
+// Use when handlers may exceed Shopify's ~5s webhook timeout
+webhookRegistry.on("PRODUCTS_UPDATE", async (shop, payload) => {
+  await syncFullCatalog(shop, payload);
+}, { async: true });
 ```
 
-Built-in handlers: `APP_UNINSTALLED`, `APP_SUBSCRIPTIONS_UPDATE`, GDPR compliance topics.
-Methods: `on()` / `dispatch()` / `getRegisteredTopics()`. Includes retry with exponential backoff.
-See [Services API Reference](docs/services-api.md) for full details.
+**Async queue lifecycle:** Webhook received → HMAC verified → job persisted (pending) → 200 returned immediately → `setImmediate` triggers consumption → CAS atomic claim (pending → processing) → dispatch to handlers → on success: mark completed; on failure: exponential backoff retry (30s base) → after 3 attempts: dead-letter (failed). A batch-level heartbeat (60s) renews outstanding jobs to prevent lease expiry. A cron endpoint (`/api/cron`) drains backlog as crash recovery fallback.
+
+**Idempotent dedup:** Shopify retries unacknowledged events with the same `X-Shopify-Webhook-Id`. The queue's `@@unique([topic, shopDomain, webhookId])` constraint catches duplicates — P2002 errors are silently ignored.
+
+Built-in handlers: `APP_UNINSTALLED` (soft-delete + session clear), `APP_SUBSCRIPTIONS_UPDATE` (billing lifecycle), GDPR compliance topics.
+
+#### Outbound: Merchant Webhooks (`services/webhook-outbound.ts`)
+
+Notify merchants when app events occur — with SSRF protection and HMAC-SHA256 signing:
+
+```typescript
+import { emitWebhook, generateWebhookSecret } from "~/services/webhook-outbound";
+
+// Emit event to all matching merchant-configured endpoints
+await emitWebhook(shopId, "rule.created", { ruleId: "123", name: "Buy 2 Get 1" });
+
+// Generate signing secret for new webhook configurations
+const secret = generateWebhookSecret(); // 64-char hex (32 random bytes)
+```
+
+Security: URL validation blocks private IPs, DNS rebinding, and non-whitelisted ports. Each delivery is signed with the endpoint's secret so recipients can verify authenticity.
+
+Event types: `rule.created`, `rule.updated`, `rule.deleted`, `rule.triggered`, `ab_test.complete`, `quota.warning`.
+
+#### Cron Setup
+
+The cron endpoint (`/api/cron`) processes background webhook jobs and cleans up old records. Configure it in your hosting platform:
+
+```
+GET https://your-app.com/api/cron?secret=YOUR_CRON_SECRET
+```
+
+Recommended: every 5 minutes. The endpoint also runs lease recovery (reclaim stuck jobs) and cleanup (delete completed/failed jobs older than 7 days). Set `CRON_SECRET` in `.env` — requests without a matching secret are rejected.
+
+See [Services API Reference](docs/services-api.md) for full method signatures and parameter tables.
 
 ### Billing (`services/billing.service.ts`)
 - Three plans: Free / Pro / Business
