@@ -205,3 +205,17 @@ model WebhookConfig {
   @@index([shopId, isActive])
   @@map("webhook_configs")
 }
+
+/// RateLimitCache — DB fallback for Shopify API rate limit state.
+/// When Redis is unavailable, this table provides cross-process state sharing.
+/// Writes are fire-and-forget; reads happen only when local memory state is stale.
+/// Rows expire after 5 minutes (matching Redis TTL) to prevent unbounded growth.
+model RateLimitCache {
+  shopDomain String   @id @map("shop_domain")
+  state      String   // JSON: { used, capacity, lastUpdate, blockedUntil }
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("rate_limit_cache")
+}

@@ -19,7 +19,7 @@ Battle-tested boilerplate with OAuth, Billing, Functions, GDPR compliance, and m
 - **GDPR Compliance** — Customer data request, redact, and shop redact webhook handlers
 - **Cold-Start Self-Healing** — Auto-reload when App Bridge isn't ready, ErrorBoundary with 401 recovery, and 15s timeout fallback
 - **i18n** — `useTranslation` hook with 4 languages (en/zh/ja/es), email templates included
-- **Rate Limiter** — Dual-backend: Redis (production multi-process) + Memory Map (dev single-process)
+- **Rate Limiter** — Triple-backend: Redis (production multi-process) + Memory Map (dev single-process) + DB (fallback)
 - **CSRF Protection** — HMAC-SHA256 signed tokens for all form submissions
 - **XSS Sanitization** — HTML sanitizer with tag/attribute whitelist for email templates and user input
 - **Code Generator** — Define a Prisma model, run `npm run generate`, get a complete CRUD page
@@ -160,7 +160,9 @@ shopforge/
 │   ├── services/           # Business logic layer (infrastructure only)
 │   │   ├── billing.service.ts  # Subscription billing (Free/Pro/Business)
 │   │   ├── email.ts            # Transactional email (Resend)
+│   │   ├── privacy.server.ts   # GDPR compliance (customer data request/redact)
 │   │   ├── shopify-admin.ts    # High-level API client (hides GraphQL)
+│   │   ├── shopify-rate-limiter.ts # Shopify API rate limiting (adaptive delay, circuit breaker)
 │   │   ├── webhook-registry.ts # Webhook handler registry + sync/async dispatch
 │   │   ├── webhook-queue.ts    # Async job queue (CAS claim, lease recovery, heartbeat)
 │   │   └── webhook-outbound.ts # Outbound webhooks (SSRF protection, HMAC signing)
@@ -194,7 +196,7 @@ shopforge/
 │   ├── content/blog/       # Markdown blog posts
 │   └── lib/blog.ts         # Markdown parser
 ├── prisma/
-│   ├── schema.prisma       # Database schema (Shop, Session, Order, ShopFunction, WebhookJob, WebhookConfig, PrivacyRequest)
+│   ├── schema.prisma       # Database schema (10 models — see docs/data-model.md)
 │   └── migrations/         # Versioned Prisma migrations (baseline + upgrade tool)
 ├── scripts/
 │   ├── _internal/          # Internal tools (developers don't touch these)
@@ -217,6 +219,14 @@ shopforge/
 ├── templates/              # Function templates (Rust)
 │   ├── hello-function-rust/    # Minimal Function (verify WASM build)
 │   └── order-discount-rust/    # Order discount with metafield config
+├── docs/                   # Architecture documentation
+│   ├── services-api.md         # Method-level API reference for all services
+│   ├── authentication.md       # Dual auth system, token exchange, bounce redirect
+│   ├── webhook-system.md       # Webhook registry, async queue, outbound delivery
+│   ├── shopify-rate-limiter.md # Adaptive delay, circuit breaker, triple-backend
+│   ├── privacy-gdpr.md        # GDPR compliance, privacy webhooks, retention
+│   ├── data-model.md           # Prisma schema, ERD, relationships, indexes
+│   └── environment-variables.md# Required/optional env vars, rate limiter overrides
 ├── .github/workflows/ci.yml  # GitHub Actions CI pipeline
 ├── Dockerfile              # Multi-stage production build
 ├── docker-compose.yml      # App + PostgreSQL + optional Redis
@@ -238,6 +248,8 @@ shopforge/
 - `verifySessionToken(token)` — Verifies JWT from App Bridge
 - `isValidShopDomain(shop)` — SSRF prevention for shop domains
 - **Cold-start handling**: When no `id_token` is available (App Bridge hasn't initialized), returns `needsRefresh` for graceful degradation. Homepage auto-reloads once App Bridge provides the token.
+
+> **Deep dive:** [Authentication Architecture →](docs/authentication.md)
 
 ### Shopify Admin API (`services/shopify/`)
 
@@ -340,6 +352,8 @@ Recommended: every 5 minutes. The endpoint also runs lease recovery (reclaim stu
 
 See [Services API Reference](docs/services-api.md) for full method signatures and parameter tables.
 
+> **Deep dive:** [Webhook Resilience Engine →](docs/webhook-system.md)
+
 ### Billing (`services/billing.service.ts`)
 - Three plans: Free / Pro / Business
 - Usage tracking via `app_subscriptions/update` webhook
@@ -358,9 +372,12 @@ See [Services API Reference](docs/services-api.md) for full method signatures an
 - Priority: URL param > localStorage > browser language > "en"
 - Server-side: `getTranslation(locale)` for loaders
 
-### Rate Limiter (`utils/rate-limiter.ts`)
-- `rateLimit(key, { max, windowMs })` — returns null or `{ retryAfter }`
+### Rate Limiter (`utils/rate-limiter.ts` + `services/shopify-rate-limiter.ts`)
+- `rateLimit(key, { max, windowMs })` — generic rate limiting, returns null or `{ retryAfter }`
 - Presets: `login` (5/min), `write` (10/min), `api` (60/min)
+- **Shopify API Rate Limiter** — adaptive delay + circuit breaker for Shopify Admin API calls, triple-backend (Redis/Memory/DB)
+
+> **Deep dive:** [Shopify Rate Limiter Architecture →](docs/shopify-rate-limiter.md)
 
 ### Demo Code (`app/demo/`)
 
@@ -543,7 +560,24 @@ MIT — use it however you want. Build apps, sell them, modify them. No attribut
 - 🚀 **[Getting Started](GETTING-STARTED.md)** — Step-by-step guide from clone to running app
 - 🌐 **Official Website:** [https://www.yuntongsoft.com](https://www.yuntongsoft.com)
 - 📖 **Documentation & Guides:** [https://www.yuntongsoft.com/docs](https://www.yuntongsoft.com/docs)
+
+### Architecture Docs
+
+Deep-dive into each subsystem:
+
+| Document | Description |
+|----------|-------------|
+| [Services API Reference](docs/services-api.md) | Method-level documentation for all service modules |
+| [Authentication Architecture](docs/authentication.md) | Dual auth system, session tokens, token exchange, bounce redirect |
+| [Webhook Resilience Engine](docs/webhook-system.md) | Handler registry, async job queue, outbound delivery, SSRF protection |
+| [Shopify Rate Limiter](docs/shopify-rate-limiter.md) | Adaptive delay, triple-backend (Redis/Memory/DB), circuit breaker |
+| [GDPR Compliance](docs/privacy-gdpr.md) | Privacy webhooks, encrypted payloads, provider registry, retention |
+| [Data Model](docs/data-model.md) | Prisma schema, ERD, relationships, index strategy, design decisions |
+| [Environment Variables](docs/environment-variables.md) | Required/optional variables, rate limiter overrides, generation commands |
+
+### Other
+
 - [CHANGELOG.md](CHANGELOG.md) — Release history and notable changes
 - [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute, coding standards, PR process
 - [DEPLOYMENT.md](DEPLOYMENT.md) — Deployment guides for Vercel, Railway, Fly.io, Docker
-- [Services API Reference](docs/services-api.md) — Method-level documentation for all service modules
+- [SECURITY.md](SECURITY.md) — Security policy and vulnerability reporting

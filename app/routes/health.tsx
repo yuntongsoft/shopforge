@@ -16,6 +16,7 @@ import prisma from "~/db.server";
 import { getEnvIssues } from "~/utils/env-validator";
 import { encrypt } from "~/utils/encryption";
 import { getQueueStats } from "~/services/webhook-queue";
+import { shopifyRateLimiter } from "~/services/shopify-rate-limiter";
 
 /**
  * Timing-safe string comparison — prevents timing attacks on secret comparison.
@@ -95,6 +96,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     webhookQueue = { pending: -1, processing: -1, completed: -1, failed: -1 };
   }
 
+  // 6. Shopify API rate limiter metrics
+  const rateLimiter = shopifyRateLimiter.getMetrics();
+
   return json(
     {
       ...baseResult,
@@ -102,6 +106,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       encryption: encryptionStatus,
       shops: { total: shopCount },
       webhookQueue,
+      rateLimiter,
     },
     { status: checks.database === "ok" && encryptionStatus === "ok" ? 200 : 503 }
   );

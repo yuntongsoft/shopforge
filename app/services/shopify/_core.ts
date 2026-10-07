@@ -15,6 +15,7 @@ import { decrypt } from "~/utils/encryption";
 import { createLogger } from "~/utils/logger";
 import { withRetry } from "~/utils/retry";
 import { SHOPIFY_API_VERSION } from "~/utils/shopify-config";
+import { shopifyRateLimiter } from "~/services/shopify-rate-limiter";
 
 const logger = createLogger({ module: "shopify-admin" });
 const API_VERSION = SHOPIFY_API_VERSION;
@@ -47,6 +48,8 @@ export function createCore(shopDomain: string) {
 
   /**
    * Execute a raw GraphQL query (escape hatch for custom queries)
+   * Integrates adaptive rate limiting: waits before request if bucket is near capacity,
+   * tracks state from response headers, and handles 429 with Retry-After.
    */
   async function graphql<T>(
     query: string,
@@ -57,32 +60,52 @@ export function createCore(shopDomain: string) {
 
     return withRetry(
       async () => {
-        const response = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Shopify-Access-Token": accessToken,
-          },
-          body: JSON.stringify({ query, variables }),
-        });
+        // Adaptive rate limit: wait if bucket usage is high
+        await shopifyRateLimiter.acquire(shopDomain);
 
-        if (response.status === 401) {
-          throw new Error("Shopify access token expired or revoked. Please reinstall the app.");
+        try {
+          const response = await fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Shopify-Access-Token": accessToken,
+            },
+            body: JSON.stringify({ query, variables }),
+          });
+
+          // Track rate limit state from response headers
+          shopifyRateLimiter.track(shopDomain, response);
+
+          if (response.status === 401) {
+            throw new Error("Shopify access token expired or revoked. Please reinstall the app.");
+          }
+
+          // 429 Too Many Requests: rate limit exceeded, let withRetry handle retry
+          if (response.status === 429) {
+            shopifyRateLimiter.handle429(shopDomain, response);
+            const retryAfter = response.headers.get("Retry-After") || "2";
+            throw new Error(`Shopify API rate limit exceeded. Retry after ${retryAfter}s`);
+          }
+
+          if (!response.ok) {
+            const body = await response.text().catch(() => "");
+            throw new Error(`Shopify API error ${response.status}: ${body.slice(0, 300)}`);
+          }
+
+          const json = await response.json();
+
+          if (json.errors?.length) {
+            const messages = json.errors.map((e: { message: string }) => e.message).join(", ");
+            throw new Error(`GraphQL error: ${messages}`);
+          }
+
+          // Circuit breaker: successful response resets consecutive 429 counter
+          shopifyRateLimiter.recordSuccess(shopDomain);
+
+          return json.data as T;
+        } finally {
+          shopifyRateLimiter.release(shopDomain);
         }
-
-        if (!response.ok) {
-          const body = await response.text().catch(() => "");
-          throw new Error(`Shopify API error ${response.status}: ${body.slice(0, 300)}`);
-        }
-
-        const json = await response.json();
-
-        if (json.errors?.length) {
-          const messages = json.errors.map((e: { message: string }) => e.message).join(", ");
-          throw new Error(`GraphQL error: ${messages}`);
-        }
-
-        return json.data as T;
       },
       { maxRetries: 2, label: `shopifyAdmin(${shopDomain})` }
     );

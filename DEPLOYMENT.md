@@ -14,6 +14,8 @@ ShopForge supports multiple deployment targets. Choose the one that fits your in
 
 Copy `.env.example` to `.env` and configure:
 
+> **Full reference:** See [Environment Variables](docs/environment-variables.md) for the complete list including rate limiter overrides and generation commands.
+
 | Variable | Required | Description |
 |:---|:---|:---|
 | `SHOPIFY_API_KEY` | Yes | From Partner Dashboard |
